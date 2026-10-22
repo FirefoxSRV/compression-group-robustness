@@ -1,0 +1,6 @@
+{
+  "seed": 0,
+  "best_epoch": 3,
+  "best_val_acc_avg": 0.9199332777314428,
+  "checkpoint": "checkpoints/vit_s16_waterbirds_seed0.pt"
+}

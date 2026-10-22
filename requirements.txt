@@ -1,0 +1,10 @@
+torch>=2.2
+torchvision
+timm>=1.0
+numpy
+pandas
+matplotlib
+pyyaml
+tqdm
+pillow
+pytest

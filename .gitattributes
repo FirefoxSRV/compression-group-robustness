@@ -1,0 +1,4 @@
+# Result files are data. Keep their bytes exactly as the pipeline wrote them
+# (Python's csv module emits CRLF) so a checkout matches what produced it.
+*.csv -text
+*.json -text

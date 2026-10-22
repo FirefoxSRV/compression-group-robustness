@@ -1,0 +1,85 @@
+# Phase 1 base configuration.
+# Every number the pipeline depends on lives here, not in code.
+
+paths:
+  data_root:    data
+  data_dir:     data/waterbirds_v1.0
+  results_dir:  results
+  figures_dir:  figures
+  ckpt_dir:     checkpoints
+  test_cache:   results/test_cache.pt
+  train_cache:  results/train_cache.pt
+  val_cache:    results/val_cache.pt
+  sweep_csv:    results/sweep.csv
+  baseline_json: results/baseline.json
+
+data:
+  download_url: "https://worksheets.codalab.org/rest/bundles/0x505056d5cdea4e4eaa0e242cbfe2daa4/contents/blob/"
+  archive_name: waterbirds_v1.0.tar.gz
+  # Asserted by V1. If these ever fail, group indexing is wrong -- stop everything.
+  train_group_counts: [3498, 184, 56, 1057]
+
+model:
+  timm_name:  vit_small_patch16_224
+  num_classes: 2
+  # ViT-S/16 structure, asserted at load time.
+  dim: 384
+  num_heads: 6
+  head_dim: 64
+  hidden: 1536
+  depth: 12
+
+train:
+  optimizer:     adamw
+  lr:            1.0e-5
+  weight_decay:  1.0e-4
+  scheduler:     cosine        # no warmup
+  epochs:        10
+  batch_size:    32
+  eval_batch_size: 64
+  # Model selection is on validation AVERAGE accuracy, never worst-group.
+  # Worst-group selection is a group-aware intervention that would inflate the
+  # ERM baseline and void the premise of the study. See README.
+  select_on:     val_acc_avg
+  seeds:         [0, 1, 2]
+
+eval:
+  batch_size: 64
+
+compress:
+  # Scope decided once (spec 6.1) and reused by every method.
+  target_suffixes:
+    - attn.qkv.weight
+    - attn.proj.weight
+    - mlp.fc1.weight
+    - mlp.fc2.weight
+  excluded: "patch_embed, cls_token, pos_embed, all LayerNorm, all biases, head"
+  min_heads_per_block: 1
+
+sweep:
+  magnitude_sparsity:  [0.0, 0.3, 0.5, 0.7, 0.8, 0.9, 0.95]
+  heads_removed:       [0, 6, 12, 24, 36, 48, 60]
+  ffn_fraction:        [0.0, 0.3, 0.5, 0.7, 0.8, 0.9, 0.95]
+  quantize_bits:       [8, 6, 4, 3]
+  quantize_granularity: [per_tensor, per_channel]
+
+# ---------------------------------------------------------------- Phase 2
+# Data pruning (Mulchandani & Kim, ICLR 2025), the "general" variant: no group
+# labels, no spurious-attribute access. Difficulty is read from a single ERM
+# run at a fixed early epoch; the hardest samples are removed class-balanced
+# and the network is retrained from scratch on what remains.
+prune:
+  # 0-indexed, and it means END of that epoch. score_epoch: 1 == after two
+  # passes over the training set. The paper uses e=1 for Waterbirds; its
+  # indexing convention is not stated unambiguously, so this is a knob and the
+  # value used is recorded in every scores file.
+  score_epoch: 1
+  # Fractions of the FULL training split (4795) removed, hardest-first.
+  fractions: [0.01, 0.02, 0.05, 0.10]
+  # Equal COUNT removed per class, so the removed set is class-balanced to
+  # within one sample on an odd budget (gate V10). Not proportional: the
+  # classes are 3682/1113, and proportional removal would be a different
+  # intervention.
+  class_balanced: true
+  scores_dir:  results/difficulty
+  indices_dir: results/prune_indices
