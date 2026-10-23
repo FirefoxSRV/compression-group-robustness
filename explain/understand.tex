@@ -37,6 +37,8 @@
 \captionsetup{font=small,labelfont=bf,labelsep=period}
 \setlist{itemsep=2pt,topsep=4pt,parsep=0pt}
 \emergencystretch=3em
+\widowpenalty=300
+\clubpenalty=300
 \sloppy
 \hyphenpenalty=400
 
@@ -79,6 +81,8 @@
   cell/.style={draw=rule,line width=0.8pt,minimum width=34mm,minimum height=15mm,
                align=center,font=\small},
 }
+
+\raggedbottom
 
 \begin{document}
 
@@ -185,7 +189,6 @@ birds or learned backgrounds.
 asks the follow-up: if you \emph{fix} the robustness problem first, does
 compression undo the fix? More on that in Section~\ref{sec:phase2}.
 
-\clearpage
 
 % ================================================================ PART 1
 \section{The concepts, with zero code}
@@ -351,7 +354,6 @@ training, worst-group accuracy would start high and there'd be nothing to
 measure.
 \end{note}
 
-\clearpage
 % ================================================================ PART 2
 \section{The pipeline, end to end}
 
@@ -455,7 +457,6 @@ results table would be meaningless. One scope, decided once, reused everywhere.
 \end{tikzpicture}
 \end{center}
 
-\clearpage
 
 % ================================================================ PART 3
 \section{Every file, one by one}
@@ -603,7 +604,6 @@ exactly like a compression effect. The comment says so.
 \textbf{Also returns \code{pred\_mean}}, the average predicted class. This is the
 collapse detector; see Section~\ref{sec:tricky}.
 
-\clearpage
 \subsection{\texttt{src/train.py} -- fine-tuning, deliberately naive}
 
 \textbf{What it does:} takes a model pretrained on ImageNet, swaps in a 2-class
@@ -838,7 +838,6 @@ that small would push values past what float32's mantissa can hold, and the
 ``identity'' would be off by about 1e-7 -- failing a test that demands exact
 identity.
 
-\clearpage
 \subsection{\texttt{src/sweep.py} -- the thing that actually runs the experiment}
 
 \textbf{What it does:} loops over all 29 configurations. For each one: load a
@@ -935,7 +934,6 @@ V12 & resume key separates seeds & a 2nd seed doesn't silently skip \\
 
 \noindent Run them with \code{pytest tests/ -q}. Takes about 35 seconds.
 
-\clearpage
 
 % ================================================================ PART 4
 \section{The tricky bits}\label{sec:tricky}
@@ -1063,7 +1061,6 @@ there's exactly one model.
 \noindent The CSV would have looked complete and you'd have ``three seeds'' that
 were actually one seed copied. Gate V12 now pins this down.
 
-\clearpage
 % ================================================================ PART 5
 \section{Phase 2: can we fix it, and does the fix survive?}\label{sec:phase2}
 
@@ -1211,7 +1208,6 @@ The fix is \code{--stop-after-epoch}: run the real schedule, stop early, write
 \emph{no} checkpoint, keep only the scores. Costs 2 epochs instead of 10 and
 touches nothing.
 
-\clearpage
 
 % ================================================================ PART 6
 \section{How to actually read this code}
@@ -1286,7 +1282,7 @@ out of 72 cost 22 points of worst-group accuracy.
 model that predicts one class for every image. Always check \code{pred\_mean}.
 \end{enumerate}
 
-\vfill
+\bigskip
 \begin{center}
 {\color{ink2}\small Built from the repo as it stands. Phase 1 results are real and
 reproducible; Phase 2 is code only, so far.}
