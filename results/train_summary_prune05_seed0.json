@@ -1,0 +1,12 @@
+{
+  "seed": 0,
+  "tag": "prune05",
+  "best_epoch": 9,
+  "truncated": false,
+  "best_val_acc_avg": 0.8999165971643036,
+  "checkpoint": "checkpoints/vit_s16_waterbirds_prune05_seed0.pt",
+  "n_train": 4555,
+  "n_train_full": 4795,
+  "log": "results/train_log_prune05_seed0.csv",
+  "scores": null
+}

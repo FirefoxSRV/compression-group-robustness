@@ -1,6 +1,12 @@
 {
   "seed": 0,
+  "tag": null,
   "best_epoch": 3,
+  "truncated": false,
   "best_val_acc_avg": 0.9199332777314428,
-  "checkpoint": "checkpoints/vit_s16_waterbirds_seed0.pt"
+  "checkpoint": "checkpoints/vit_s16_waterbirds_seed0.pt",
+  "n_train": 4795,
+  "n_train_full": 4795,
+  "log": "results/train_log_seed0.csv",
+  "scores": "results/difficulty/difficulty_seed0_ep1.pt"
 }

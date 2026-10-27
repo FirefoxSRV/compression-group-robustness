@@ -1,0 +1,20 @@
+{
+  "seed": 2,
+  "tag": "prune01",
+  "checkpoint": "checkpoints/vit_s16_waterbirds_prune01_seed2.pt",
+  "acc_avg_plain": 0.9050742147048672,
+  "acc_adj_avg": 0.9772815560735743,
+  "acc_wg": 0.5950155763239875,
+  "worst_group_id": 2,
+  "gap_adj": 0.38226597974958676,
+  "acc_g0": 1.0,
+  "acc_g1": 0.8891352549889135,
+  "acc_g2": 0.5950155763239875,
+  "acc_g3": 0.9376947040498442,
+  "n_g0": 2255,
+  "n_g1": 2255,
+  "n_g2": 642,
+  "n_g3": 642,
+  "eval_seconds": 39.27881908416748,
+  "pred_mean": 0.21297894418239594
+}
