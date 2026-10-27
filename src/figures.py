@@ -67,6 +67,13 @@ def _style() -> None:
     })
 
 
+def arm_csv(results_dir, tag: str = "") -> Path:
+    """Where one arm's sweep rows live. Must match src/sweep.py:default_paths
+    and src/retention.py:load_arm -- gate V16 asserts all three agree."""
+    r = Path(results_dir)
+    return r / "sweep.csv" if not tag else r / f"sweep_{tag}.csv"
+
+
 def load(results_dir="results", seed: int = 0, tag: str = "",
          csv_name: str | None = None, baseline_name: str | None = None
          ) -> tuple[pd.DataFrame, dict]:
@@ -74,7 +81,13 @@ def load(results_dir="results", seed: int = 0, tag: str = "",
     multi-seed CSV would silently overplot two seeds as one series -- hence the
     filter and the assertion rather than a bare read_csv."""
     r = Path(results_dir)
-    df = pd.read_csv(csv_name or r / "sweep.csv")
+    # A tagged arm lives in its OWN csv: src/sweep.py:143 writes
+    # results/sweep_<tag>.csv and keeps results/sweep.csv for the untagged ERM
+    # arms of every seed. src/retention.py:49 already resolved it this way;
+    # this module did not, so `--tag prune05` could only ever assert
+    # "no rows for seed=0 tag='prune05' in sweep.csv". Gate V16 ties the three
+    # together so the convention cannot drift again.
+    df = pd.read_csv(csv_name or arm_csv(r, tag))
     df["granularity"] = df["granularity"].fillna("")
     if "tag" in df.columns:
         df["tag"] = df["tag"].fillna("")
@@ -82,7 +95,8 @@ def load(results_dir="results", seed: int = 0, tag: str = "",
     if "seed" in df.columns:
         df = df[df["seed"] == seed]
     df = df.reset_index(drop=True)
-    assert len(df), f"no rows for seed={seed} tag={tag!r} in {csv_name or 'sweep.csv'}"
+    assert len(df), (f"no rows for seed={seed} tag={tag!r} in "
+                     f"{csv_name or arm_csv(r, tag)}")
     dup = df.duplicated(subset=["method", "param_value", "granularity"])
     assert not dup.any(), f"duplicate configs after filtering: {df[dup]}"
 

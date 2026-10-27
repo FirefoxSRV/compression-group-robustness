@@ -89,6 +89,16 @@ def _key(method: str, param_value, granularity, tag, seed, checkpoint) -> tuple:
             str(seed), str(checkpoint))
 
 
+def _mps_reserved_mb() -> float:
+    """MPS driver-reserved memory, so pool growth is visible in the log rather
+    than inferred from the machine swapping."""
+    fn = getattr(torch.mps, "driver_allocated_memory", None)
+    try:
+        return round(fn() / (1024 * 1024), 1) if fn else -1.0
+    except Exception:
+        return -1.0
+
+
 @torch.no_grad()
 def _fingerprint(model) -> tuple[int, float]:
     """Cheap proof the source model is still pristine: zero count + weight sum.
@@ -110,6 +120,16 @@ def run_one(source, config, cache, device, batch_size, seed, ckpt_path, tag="") 
     metrics = evaluate_cached(compressed, cache, device, batch_size=batch_size)
     # Free the copy before the next config; two ViT-S on MPS is avoidable pressure.
     del compressed
+    # `del` is not enough. MPS keeps a caching allocator: blocks it has freed on
+    # the Python side stay reserved in the pool, so across 29 configs the
+    # reservation grows monotonically -- a ViT-S copy plus its activation
+    # buffers each time. On a 16 GB machine macOS covers that with swap, and
+    # swap lives on the data volume: it reached 33 GB on the night of
+    # 2026-10-26 and filled the disk twice, which cost one arm and several
+    # hours. Releasing the pool between configs is what keeps the footprint
+    # flat instead of climbing.
+    if device.type == "mps" and hasattr(torch.mps, "empty_cache"):
+        torch.mps.empty_cache()
 
     return {
         "tag": tag,
@@ -231,9 +251,12 @@ def run_sweep(
                           cfg["eval"]["batch_size"], seed, ckpt_path, tag or "")
             writer.writerow(row)
             f.flush()  # survive an interrupt with the row already on disk
+            mps = _mps_reserved_mb()
+            mem = f", mps {mps:.0f}MB" if mps >= 0 else ""
             print(f"[{i}/{len(grid)}] {label}: sparsity {row['achieved_sparsity']:.3f} "
                   f"adj_avg {row['acc_adj_avg']:.4f} wg {row['acc_wg']:.4f} "
-                  f"gap {row['gap_adj']:.4f} ({row['eval_seconds']:.0f}s)", flush=True)
+                  f"gap {row['gap_adj']:.4f} ({row['eval_seconds']:.0f}s{mem})",
+                  flush=True)
 
     print(f"wrote {out_path} in {time.time() - t_start:.0f}s")
     return out_path

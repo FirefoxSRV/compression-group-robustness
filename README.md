@@ -121,10 +121,33 @@ first — with the data pruning of Mulchandani and Kim (ICLR 2025) — and asks
 whether compression takes the robustness back.
 
 ```bash
-./run_phase2.sh                    # all four stages, ~9h; resumable
+./run_phase2.sh                    # everything, ~9h; resumable
 SEEDS=0 ./run_phase2.sh            # seed 0 only, ~3h, a complete single-seed answer
-./run_phase2.sh stage1             # one stage at a time
+./run_phase2.sh stage1 stage3      # any subset of stages, in any order
+python -m src.preflight            # the stage-0 checks on their own
 ```
+
+The default stage order is **1, 3, 4, then 2, 3, 4** — not 1, 2, 3, 4. Stages 3
+and 4 skip whatever is not ready yet and do whatever is, so this order lands
+seed 0's complete pruning answer (the gate on whether pruning buys anything at
+all) before spending ~1.3 h on the seeds 1–2 ERM baselines. If the night is cut
+short, what survives is a result rather than a prefix.
+
+Three properties make it safe to leave running unattended:
+
+* **Stage 0 is a preflight.** `src/preflight.py` checks the device, all three
+  caches and their group counts, checkpoint integrity, the sweep CSV header,
+  and the disk against what this particular run will write — then refuses to
+  start if anything is wrong. Nine hours is too long to discover a missing
+  cache at hour six.
+* **A failed step is recorded, not fatal.** One transient failure must not cost
+  the remaining hours. Every failure is listed at the end and the script exits
+  non-zero. Re-running the same command resumes.
+* **Completion means a checkpoint *and* no `*_last.pt`.** `src/train.py` saves
+  best-so-far on every validation improvement, so a run killed at epoch 8
+  leaves a healthy-looking epoch-3 checkpoint behind. Treating that as finished
+  would seat a half-trained model in a 10-epoch slot and the sweep would just
+  compress it. Gates V14 and V15 pin this down, in both languages.
 
 What that script runs, and what each piece is for:
 
@@ -149,10 +172,43 @@ spurious-attribute access: the `prune_general.py` variant, because a group-aware
 pruner would leak exactly the information the ERM baseline is denied.
 
 **Seed 0 is scored without being retrained.** `--stop-after-epoch` runs the real
-cosine schedule and exits early, writing no selection checkpoint. MPS training
-is not bit-reproducible, so a plain rerun would overwrite
-`vit_s16_waterbirds_seed0.pt` and silently decouple the Phase 1 numbers above
-from the weights that produced them.
+cosine schedule and exits early, writing no selection checkpoint, so the Phase 1
+checkpoint that produced every number above is never touched.
+
+It did not always hold. The guard used to be ordered
+
+```python
+if stop_after_epoch is not None and epoch >= stop_after_epoch:
+    break                       # only fires AT the truncation epoch
+if val_acc_avg > best[...]:
+    save_checkpoint(...)        # epoch 0 of a stop_after_epoch=1 run reaches this
+```
+
+so with `score_epoch: 1` epoch 0 failed the break test and fell straight through
+to the save. `vit_s16_waterbirds_seed0.pt` was overwritten with epoch-0 weights
+(`val_acc_avg` 0.8616 in place of 0.9199) by the very flag that exists to
+prevent it. Checkpoints are gitignored and not backed up, so the only recovery
+was a full retrain. Three things now stand in the way:
+
+* the selection save and the resume write are both gated on `truncated`, not on
+  the break — **gate V13** asserts the exact failing case;
+* a *fresh* run refuses to start on top of an existing selection checkpoint
+  unless given `--allow-overwrite` (`--resume` continues one instead);
+* **preflight C3** compares every checkpoint against the records that describe
+  it — `train_summary_seed{s}.json` for the selected epoch, and `baseline.json`
+  by re-evaluating the weights — so a checkpoint holding the wrong epoch is
+  caught before 348 sweep configurations are computed against it.
+
+**On reproducibility.** The older claim here was that MPS training is not
+bit-reproducible. Measured, it is: at `--num-workers 0` seed 0's epoch-0 loss
+came back as `0.20122195619534278` on three independent runs, and a full
+10-epoch rerun reproduced the whole trajectory. That is what made recovering the
+lost checkpoint possible. `--num-workers > 0` does shift it, because workers are
+seeded from the loader generator and each sample gets a different augmentation
+draw — epoch-0 loss moves to 0.2005. Workers also measured no faster here (189 s
+against a 125–208 s spread at 0 workers, on a fanless M2 whose epoch time is set
+by thermal and disk state), so **0 is the default** and bit-comparability with
+Phase 1 is free.
 
 **The headline quantity is the retention ratio.** With `W_p` and `W_e` the
 worst-group accuracy of the pruned and ERM models at the same configuration,
@@ -187,6 +243,7 @@ src/figures.py      the three figures + results/summary_table.csv
 src/prune_data.py   Phase 2: difficulty ranking -> class-balanced keep-index sets
 src/retention.py    Phase 2: the retention ratio R(s), per compression family
 src/migrate_csv.py  one-shot: adds the Phase 2 `tag` column to a Phase 1 CSV
+src/preflight.py    Phase 2 stage 0: fail-fast checks before a 9h unattended run
 run_phase2.sh       Phase 2 end to end, resumable, under caffeinate
 tests/              the V-gates the rest of the code refers to by number
 ```
@@ -196,7 +253,10 @@ tests/              the V-gates the rest of the code refers to by number
 to within one sample, V10b removal is hardest-first and deterministic under
 ties, V10c the train cache is index-aligned with the train split, V11 keep
 indices are a strict subset, V12 the sweep's resume key separates arms, seeds
-and checkpoints.
+and checkpoints, V13 a truncated run never writes the selection checkpoint, V14
+`train.py` and `run_phase2.sh` agree on the `*_last.pt` name that decides
+whether a run finished, V15 the runner's own skip/resume/failure logic
+(`tests/test_runner.sh`, driven against a fake tree — no MPS).
 
 ### The compression contract
 

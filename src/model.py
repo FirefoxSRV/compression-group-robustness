@@ -82,12 +82,17 @@ def fresh_model(ckpt_path, device) -> nn.Module:
 
 
 def save_checkpoint(model, path, *, seed, epoch, val_acc_avg) -> None:
+    """Write atomically: a kill partway through a 87 MB torch.save would
+    otherwise leave a truncated file that loads as a crash hours later, in a
+    pipeline whose whole point is surviving an unattended overnight run."""
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_suffix(path.suffix + ".tmp")
     torch.save({
         "state_dict": {k: v.cpu() for k, v in model.state_dict().items()},
         "seed": seed,
         "epoch": epoch,
         "val_acc_avg": val_acc_avg,
         "timm_model": TIMM_NAME,
-    }, path)
+    }, tmp)
+    tmp.replace(path)   # os.replace is atomic within a filesystem

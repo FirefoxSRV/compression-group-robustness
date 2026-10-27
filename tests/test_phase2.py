@@ -5,6 +5,10 @@ V10b removal is hardest-first, and a pure function of (difficulty, y, fraction)
 V10c the train cache is index-aligned with the train split
 V11  keep indices are a strict subset of the original training split
 V12  the sweep's resume key separates arms, seeds and checkpoints
+V13  a truncated run never writes the selection checkpoint
+V14  train.py and run_phase2.sh agree on the *_last.pt name
+V15  run_phase2.sh's skip/resume/failure logic (tests/test_runner.sh)
+V16  sweep, retention and figures agree on where an arm's rows live
 """
 from __future__ import annotations
 
@@ -178,3 +182,130 @@ def test_v12_sweep_columns_include_tag():
 
     assert COLUMNS[0] == "tag"
     assert len(COLUMNS) == len(set(COLUMNS))
+
+
+# ------------------------------- V13: a truncated run never writes a checkpoint
+
+def test_v13_truncated_run_never_saves_selection_checkpoint():
+    """`--stop-after-epoch` exists so seed 0 can be scored without retraining.
+    It stopped protecting anything the moment the save was reachable before the
+    break: with stop_after_epoch=1, epoch 0 saved, and the Phase 1 checkpoint
+    (epoch 3, val_acc_avg 0.9199) was replaced by epoch-0 weights (0.8616).
+    No epoch of a truncated run may write it, however good the validation."""
+    from src.train import should_save_selection
+
+    # The exact case that caused the loss: epoch 0 of a stop_after_epoch=1 run,
+    # beating the initial best of -1.0.
+    assert not should_save_selection(True, 0.8615512927439533, -1.0)
+    # Nor any later epoch, nor an implausibly good one.
+    assert not should_save_selection(True, 0.9999, 0.5)
+    # A full run is unaffected: it still selects on improvement only.
+    assert should_save_selection(False, 0.8615512927439533, -1.0)
+    assert should_save_selection(False, 0.92, 0.8615512927439533)
+    assert not should_save_selection(False, 0.86, 0.9199332777314428)
+
+
+def test_v13_truncated_run_uses_its_own_log_and_summary_names():
+    """A truncated run is a scoring run, not a training record. It must not
+    claim `train_log_seed0.csv` / `train_summary_seed0.json` -- README.md and
+    explain/understand.tex quote that log's per-epoch timings."""
+    from src.train import run_suffix
+
+    assert run_suffix(None, None) == ""
+    assert run_suffix(None, 1) == "_ep1"
+    assert run_suffix("prune05", None) == "_prune05"
+    assert run_suffix("prune05", 1) == "_prune05_ep1"
+    # The canonical name is reachable ONLY by a full, untagged run.
+    assert run_suffix(None, 0) != "", "stop_after_epoch=0 must still be marked"
+
+
+# -------------------------- V14: the cross-language resume-file name contract
+
+def test_v14_last_checkpoint_name_matches_the_shell():
+    """`run_phase2.sh` decides whether a run finished with
+
+        trained() { [ -e "$1" ] && [ ! -e "${1%.pt}_last.pt" ]; }
+
+    and `src/train.py` writes that file from `last_checkpoint_path`. The two
+    are written in different languages and nothing links them, so if either
+    name drifts the script silently calls every interrupted run complete --
+    which is precisely the half-trained-model failure it exists to prevent."""
+    from src.train import checkpoint_name, last_checkpoint_path
+
+    for seed in (0, 1, 2):
+        for tag in (None, "prune01", "prune10"):
+            ckpt = f"checkpoints/{checkpoint_name(seed, tag)}"
+            shell = ckpt[:-len(".pt")] + "_last.pt"   # == ${1%.pt}_last.pt
+            python = str(last_checkpoint_path("checkpoints", seed, tag))
+            assert python == shell, f"{python} != {shell}"
+
+
+def test_v14_is_run_complete_is_the_single_definition(tmp_path):
+    """progress.py and verify.py must both defer to train.is_run_complete --
+    there were briefly three hand-rolled copies of this rule, and a drift in
+    any one of them silently reclassifies interrupted runs as finished."""
+    from src.progress import _trained as progress_trained
+    from src.train import is_run_complete
+    from src.verify import _trained as verify_trained
+
+    ckpt = tmp_path / "vit_s16_waterbirds_prune05_seed1.pt"
+    last = tmp_path / "vit_s16_waterbirds_prune05_seed1_last.pt"
+
+    for setup, expected in (((), False), ((ckpt,), True), ((ckpt, last), False)):
+        for f in (ckpt, last):
+            f.unlink(missing_ok=True)
+        for f in setup:
+            f.touch()
+        for fn in (is_run_complete, progress_trained, verify_trained):
+            assert fn(ckpt) is expected, f"{fn.__module__}.{fn.__name__} on {setup}"
+
+
+# ----------------------------- V15: the runner's own skip/resume/failure logic
+
+def test_v15_run_phase2_logic():
+    """Drives the real stage functions against a fake tree -- no python, no MPS.
+    Covers `trained()`, both stage-3 and stage-4 skip paths, the refusal to
+    sweep a model that did not finish, failure capture, and the disk floor."""
+    import subprocess
+
+    harness = ROOT / "tests" / "test_runner.sh"
+    r = subprocess.run(["bash", str(harness), str(ROOT)],
+                       capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert "0 failed" in r.stdout, r.stdout
+
+
+# ------------------- V16: one arm, one CSV path, agreed by all three modules
+
+def test_v16_arm_csv_path_agrees_across_modules():
+    """`src/sweep.py` writes a tagged arm to results/sweep_<tag>.csv and keeps
+    results/sweep.csv for the untagged ERM arms. `retention.py` resolved that
+    correctly; `figures.py` did not, and hardcoded sweep.csv -- so
+    `--tag prune05` always died on "no rows for seed=0 tag='prune05'". Nothing
+    linked the three, so pin them together."""
+    import yaml
+
+    from src.figures import arm_csv
+    from src.sweep import default_paths
+
+    cfg = yaml.safe_load(open(ROOT / "configs" / "base.yaml"))
+    for tag in ("", "prune01", "prune05", "prune10"):
+        for seed in (0, 1, 2):
+            want = default_paths(cfg, seed, tag or None)["csv"]
+            assert Path(arm_csv("results", tag)) == Path(want), (
+                f"figures disagrees with sweep for tag={tag!r} seed={seed}: "
+                f"{arm_csv('results', tag)} != {want}")
+            # retention.load_arm builds the same path inline; mirror its rule.
+            retention_path = (Path("results") / "sweep.csv" if not tag
+                              else Path("results") / f"sweep_{tag}.csv")
+            assert retention_path == Path(want), (
+                f"retention disagrees for tag={tag!r}: {retention_path} != {want}")
+
+
+def test_v16_untagged_arms_of_every_seed_share_one_csv():
+    """The ERM arms of all three seeds live in ONE sweep.csv, separated by the
+    `seed` column -- which is why V12's resume key has to include seed."""
+    from src.figures import arm_csv
+
+    assert arm_csv("results", "") == Path("results/sweep.csv")
+    assert arm_csv("results", "prune02") == Path("results/sweep_prune02.csv")
