@@ -228,6 +228,62 @@ ratio manufactured by dividing by noise. And collapsed rows (V7b, `pred_mean`
 pinned near 0 or 1) are excluded, because a model with one output has no group
 disparity left to retain.
 
+## Phase 2 results: the intervention survives compression until compression breaks the model
+
+The identifiable-setting rule reproduces the paper on ViT-S/16. Dense
+(uncompressed) test accuracy, 3 seeds; the paper's `Mean%` convention is our
+`acc_adj_avg`, so these are directly comparable:
+
+| | Worst% | Mean% |
+|---|---|---|
+| ERM (ours) | 73.31 | 98.32 |
+| ERM (paper) | 74.81 | 98.10 |
+| spur25 | 86.40 | 94.69 |
+| spur50 | 87.90 | 94.35 |
+| spur75 | 87.28 | 92.10 |
+| Ours (paper) | 90.93 | 92.48 |
+
+The gain over ERM is **+13.9 pp (sd 3.1), positive in 9/9 arms**, and flat in
+sparsity across 25–75% — the claim of the paper's Fig. 8. We land 3–4 pp under
+their 90.93 on a different architecture (ViT-S/16 vs ResNet-50), a tenth of the
+schedule (10 epochs vs 100), and group-blind model selection (`val_acc_avg`,
+never worst-group), which makes these numbers a lower bound.
+
+**The retention question does not split by compression family.** Over all 195
+non-collapsed configurations, what decides R is whether compression left a
+working model at all:
+
+| regime | n | R mean | R ≥ 0.75 |
+|---|---|---|---|
+| compressed worst-group ≥ 0.40 (usable) | 114 | **+1.30** | 96% |
+| 0.25–0.40 (degraded) | 14 | +1.30 | 86% |
+| < 0.25 (broken) | 67 | −0.20 | 13% |
+
+Wherever the compressed model keeps usable worst-group accuracy, the gain is
+retained and often widens — across *all four* families, R from +0.29 to +3.58.
+Negative R never appears above a compressed worst-group of 0.269, because there
+R is a ratio between two degenerate predictors and means nothing.
+
+What the families actually differ in is **where that cliff falls**, which is
+Phase 1's conclusion restated:
+
+| family | gain retained up to | destroyed by |
+|---|---|---|
+| magnitude | 50% sparsity (R 2.35) | 70% (R −0.08) |
+| heads | 12–24 of 72 (R 1.21) | 36 (R −0.50) |
+| ffn | — (R 0.22 already at 30%) | 30% |
+| quantize, per-channel | 3–4 bits (R 1.09–1.28) | — |
+| quantize, per-tensor | 6 bits (R 1.20) | 4 bits (R −1.06) |
+
+Quantization granularity again matters more than bit width: per-channel holds
+the gain down to 3 bits while per-tensor loses it at 4. Averaging R within a
+family hides this — a mean of +1.26 for magnitude smears a +2.35 at 50%
+sparsity together with a −0.08 at 70% and describes neither.
+
+Consistent with the compression-and-fairness literature, which finds
+unstructured pruning less damaging than structured removal and quantization
+gentler than pruning.
+
 ## Layout
 
 ```
