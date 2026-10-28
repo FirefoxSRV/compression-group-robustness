@@ -222,7 +222,8 @@ def check_sweep_csv(path: Path) -> None:
 def plan(cfg: dict, ckpt_dir: Path, results_dir: Path, seeds: list[int],
          fractions: list[float]) -> dict:
     """What this run still has to do. Drives both the disk and time estimates."""
-    tags = [f"prune{int(round(f * 100)):02d}" for f in fractions]
+    from .verify import arm_tags
+    tags = arm_tags(cfg)
 
     def done(path: Path) -> bool:
         # Mirrors run_phase2.sh's `trained()`: a checkpoint with a surviving

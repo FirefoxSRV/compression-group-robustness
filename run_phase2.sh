@@ -37,8 +37,22 @@ set -euo pipefail
 cd "$(dirname "$0")"
 
 SEEDS="${SEEDS:-0 1 2}"
-FRACTIONS="${FRACTIONS:-01 02 05 10}"
 SCORE_EPOCH="${SCORE_EPOCH:-1}"
+
+# The arm list comes from configs/base.yaml, not from a second copy of the
+# fractions here -- a bash list that drifts from the config silently trains the
+# wrong arms. VARIANT picks the selection rule and therefore both the sparsities
+# and the tag prefix ("spur25" vs "prune05"), so the two variants coexist in one
+# results directory instead of overwriting each other.
+VARIANT="${VARIANT:-$(python -c 'import yaml;print(yaml.safe_load(open("configs/base.yaml"))["prune"].get("variant","global"))')}"
+FRACTIONS="${FRACTIONS:-$(python - "$VARIANT" <<'EOF'
+import sys, yaml
+c = yaml.safe_load(open("configs/base.yaml"))["prune"]
+fr = c["spurious_sparsities"] if sys.argv[1] == "spurious" else c["fractions"]
+print(" ".join(f"{round(f * 100):02d}" for f in fr))
+EOF
+)}"
+TAG_PREFIX="${TAG_PREFIX:-$([ "$VARIANT" = "spurious" ] && echo spur || echo prune)}"
 SKIP_PREFLIGHT="${SKIP_PREFLIGHT:-0}"
 MIN_FREE_MB="${MIN_FREE_MB:-2048}"   # per run: 87MB ckpt + 260MB last.pt + room
 DISK_WAIT_MAX_S="${DISK_WAIT_MAX_S:-3600}"   # how long to wait for swap to drain
@@ -161,14 +175,15 @@ stage3() {
     # that a set stage 4 already trained on has not moved underneath it.
     local all=1
     for f in $FRACTIONS; do
-      have "results/prune_indices/prune${f}_seed${seed}.pt" || all=0
+      have "results/prune_indices/${TAG_PREFIX}${f}_seed${seed}.pt" || all=0
     done
     if [ "$all" = "1" ]; then
       echo "all fractions present, skipping"
       continue
     fi
-    step "prune indices seed $seed" "$LOG_DIR/prune_seed${seed}.log" \
-      -m src.prune_data --seed "$seed"
+    step "prune indices seed $seed ($VARIANT)" \
+      "$LOG_DIR/prune_${VARIANT}_seed${seed}.log" \
+      -m src.prune_data --seed "$seed" --variant "$VARIANT"
   done
 }
 
@@ -178,7 +193,7 @@ stage3() {
 stage4() {
   for seed in $SEEDS; do
     for f in $FRACTIONS; do
-      local tag="prune${f}"
+      local tag="${TAG_PREFIX}${f}"
       local ckpt="checkpoints/vit_s16_waterbirds_${tag}_seed${seed}.pt"
       local idx="results/prune_indices/${tag}_seed${seed}.pt"
 
@@ -226,7 +241,7 @@ stage5() {
     # always cheaper than reasoning about whether they were needed.
     for seed in $SEEDS; do
       for f in $FRACTIONS; do
-        local tag="prune${f}"
+        local tag="${TAG_PREFIX}${f}"
         local ckpt="checkpoints/vit_s16_waterbirds_${tag}_seed${seed}.pt"
         trained "$ckpt" || continue
         have "results/retention_${tag}_seed${seed}.csv" && continue
@@ -244,7 +259,7 @@ stage5() {
 
 main() {
   local t0=$SECONDS
-  echo "seeds: $SEEDS   fractions: $FRACTIONS   score epoch: $SCORE_EPOCH"
+  echo "variant: $VARIANT   seeds: $SEEDS   sparsities: $FRACTIONS (tags ${TAG_PREFIX}*)   score epoch: $SCORE_EPOCH"
   df -h . | tail -1
 
   # NOT `for stage in "${@:-stage0 stage1 ...}"` -- a quoted ${@:-default}

@@ -83,3 +83,28 @@ prune:
   class_balanced: true
   scores_dir:  results/difficulty
   indices_dir: results/prune_indices
+
+  # Which selection rule. Waterbirds is the paper's IDENTIFIABLE setting (§6.3),
+  # where it states plainly that the method uses group labels and that the
+  # group-blind rule does not work:
+  #
+  #   "our approach works with group labels ... and simply prunes those samples
+  #    containing the hardest core features within groups containing the
+  #    spurious feature associated with each class"
+  #   "it is not feasible to simply prune the hardest samples of the training
+  #    data as this will primarily prune samples that do not contain the
+  #    spurious features"
+  #
+  # The Oct 26 run used `global` and measured exactly that failure: at a 10%
+  # budget it deleted 48% of g1 and 68% of the 56-sample worst group g2, and
+  # worst-group accuracy fell monotonically with the budget. Kept as the
+  # contrast arm; `spurious` is now the primary one.
+  variant: spurious            # global | spurious
+  # Pre-balancing fraction of each class's aligned pool, matching Fig. 8's
+  # "sparsities reported before class balancing". Fig. 8's Waterbirds axis
+  # spans 25-75%, an order of magnitude above the `fractions` above -- on this
+  # dataset most of the budget goes on undoing the 3682/1113 class imbalance.
+  spurious_sparsities: [0.25, 0.50, 0.75]
+  # "we prune such that the total number of samples in both classes is the
+  # same" -- equal REMAINING class sizes, not equal counts removed.
+  equalize_classes: true

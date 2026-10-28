@@ -9,6 +9,8 @@ V13  a truncated run never writes the selection checkpoint
 V14  train.py and run_phase2.sh agree on the *_last.pt name
 V15  run_phase2.sh's skip/resume/failure logic (tests/test_runner.sh)
 V16  sweep, retention and figures agree on where an arm's rows live
+V17  the spurious variant never removes a counter-spurious sample
+V18  the spurious variant equalizes remaining class sizes
 """
 from __future__ import annotations
 
@@ -309,3 +311,83 @@ def test_v16_untagged_arms_of_every_seed_share_one_csv():
 
     assert arm_csv("results", "") == Path("results/sweep.csv")
     assert arm_csv("results", "prune02") == Path("results/sweep_prune02.csv")
+
+
+# ------------- V17/V18: the identifiable-setting rule (Mulchandani & Kim 6.3)
+
+@needs_train_cache
+def test_v17_spurious_variant_never_touches_counter_spurious_groups():
+    """The whole point of the group-aware rule. Waterbirds g1 (184) and g2 (56)
+    are the counter-spurious groups and g2 is the worst group every headline
+    number is reported on. The group-BLIND rule deleted 48% of g1 and 68% of g2
+    at a 10% budget, which is why worst-group accuracy fell; the paper says
+    exactly that ("will primarily prune samples that do not contain the
+    spurious features"). This rule must draw only from g0 and g3."""
+    import torch
+
+    from src.prune_data import ALIGNED_GROUP, select_keep_indices_spurious
+
+    cache = torch.load(TRAIN_CACHE, map_location="cpu", weights_only=False)
+    y, group = cache["y"].long(), cache["group"]
+    # Difficulty that deliberately makes the counter-spurious samples hardest,
+    # so a rule that drew globally would certainly take them.
+    difficulty = torch.where((group == 1) | (group == 2),
+                             torch.ones_like(y, dtype=torch.float),
+                             torch.zeros_like(y, dtype=torch.float))
+
+    assert ALIGNED_GROUP == {0: 0, 1: 3}
+    for sparsity in (0.1, 0.25, 0.5, 0.75, 0.9):
+        sel = select_keep_indices_spurious(difficulty, y, group, sparsity)
+        removed_groups = group[sel["removed"]]
+        for g in (1, 2):
+            n = int((removed_groups == g).sum())
+            assert n == 0, (f"sparsity {sparsity} removed {n} samples from the "
+                            f"counter-spurious group g{g}")
+        # and every one it did remove came from an aligned group
+        assert set(removed_groups.unique().tolist()) <= {0, 3}
+
+
+@needs_train_cache
+def test_v18_spurious_variant_equalizes_remaining_class_sizes():
+    """"we prune such that the total number of samples in both classes is the
+    same" -- equal REMAINING sizes, not equal counts removed. The group-blind
+    rule does the latter and preserves the 3682/1113 imbalance, which is a
+    different intervention."""
+    import torch
+
+    from src.prune_data import select_keep_indices_spurious
+
+    cache = torch.load(TRAIN_CACHE, map_location="cpu", weights_only=False)
+    y, group = cache["y"].long(), cache["group"]
+    difficulty = torch.rand(y.numel(), generator=torch.Generator().manual_seed(0))
+
+    for sparsity in (0.25, 0.5, 0.75):
+        sel = select_keep_indices_spurious(difficulty, y, group, sparsity,
+                                           equalize_classes=True)
+        kept = sel["kept_per_class"]
+        assert abs(kept[0] - kept[1]) <= 1, f"sparsity {sparsity}: kept {kept}"
+        assert sel["n_keep"] == sum(kept) == sel["n_total"] - sel["n_removed"]
+        # The counter-spurious groups are never removed, so they bound what is
+        # achievable: class 1 can never fall below its g2 count.
+        assert kept[1] >= int((group == 2).sum())
+
+    # Without equalization the imbalance survives, which is the contrast.
+    sel = select_keep_indices_spurious(difficulty, y, group, 0.25,
+                                       equalize_classes=False)
+    assert sel["kept_per_class"][0] > sel["kept_per_class"][1]
+
+
+@needs_train_cache
+def test_v18_spurious_variant_is_deterministic():
+    """Same purity requirement V10b puts on the group-blind rule."""
+    import torch
+
+    from src.prune_data import select_keep_indices_spurious
+
+    cache = torch.load(TRAIN_CACHE, map_location="cpu", weights_only=False)
+    y, group = cache["y"].long(), cache["group"]
+    d = torch.rand(y.numel(), generator=torch.Generator().manual_seed(7))
+    a = select_keep_indices_spurious(d, y, group, 0.5)
+    b = select_keep_indices_spurious(d, y, group, 0.5)
+    assert torch.equal(a["keep"], b["keep"])
+    assert torch.equal(a["removed"], b["removed"])

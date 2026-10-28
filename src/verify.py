@@ -35,6 +35,18 @@ from pathlib import Path
 SWEEP_CONFIGS = 29
 
 
+def arm_tags(cfg: dict) -> list[str]:
+    """Tags for the configured variant. One definition, used by verify,
+    progress and preflight, so none of them audits the wrong arms."""
+    pc = cfg.get("prune", {})
+    variant = pc.get("variant", "global")
+    if variant == "spurious":
+        return [f"spur{round(f * 100):02d}"
+                for f in pc.get("spurious_sparsities", [0.25, 0.50, 0.75])]
+    return [f"prune{round(f * 100):02d}"
+            for f in pc.get("fractions", [0.01, 0.02, 0.05, 0.10])]
+
+
 def _trained(ckpt: Path) -> bool:
     """One definition, in src/train.py; see is_run_complete."""
     from .train import is_run_complete
@@ -141,9 +153,11 @@ def main() -> int:
     import yaml
     cfg = yaml.safe_load(open(args.config))
     seeds = args.seeds if args.seeds is not None else list(cfg["train"]["seeds"])
-    fractions = (args.fractions if args.fractions is not None
-                 else list(cfg["prune"]["fractions"]))
-    tags = [""] + [f"prune{int(round(f * 100)):02d}" for f in fractions]
+    if args.fractions is not None:
+        pfx = "spur" if cfg["prune"].get("variant") == "spurious" else "prune"
+        tags = [""] + [f"{pfx}{round(f * 100):02d}" for f in args.fractions]
+    else:
+        tags = [""] + arm_tags(cfg)
 
     results = [check_arm(cfg, s, t) for s in seeds for t in tags]
 

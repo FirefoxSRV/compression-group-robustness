@@ -1,0 +1,154 @@
+[
+  {
+    "n_total": 4795,
+    "n_removed": 48,
+    "fraction": 0.01,
+    "class_balanced": true,
+    "removed_per_class": [
+      24,
+      24
+    ],
+    "seed": 0,
+    "tag": "prune01",
+    "score_epoch": 1,
+    "scores_path": "results/difficulty/difficulty_seed0_ep1.pt",
+    "group_report": {
+      "landbird_on_land": {
+        "removed": 10,
+        "of": 3498,
+        "pct": 0.29
+      },
+      "landbird_on_water": {
+        "removed": 14,
+        "of": 184,
+        "pct": 7.61
+      },
+      "waterbird_on_land": {
+        "removed": 8,
+        "of": 56,
+        "pct": 14.29
+      },
+      "waterbird_on_water": {
+        "removed": 16,
+        "of": 1057,
+        "pct": 1.51
+      }
+    },
+    "path": "results/prune_indices/prune01_seed0.pt",
+    "n_keep": 4747
+  },
+  {
+    "n_total": 4795,
+    "n_removed": 96,
+    "fraction": 0.02,
+    "class_balanced": true,
+    "removed_per_class": [
+      48,
+      48
+    ],
+    "seed": 0,
+    "tag": "prune02",
+    "score_epoch": 1,
+    "scores_path": "results/difficulty/difficulty_seed0_ep1.pt",
+    "group_report": {
+      "landbird_on_land": {
+        "removed": 21,
+        "of": 3498,
+        "pct": 0.6
+      },
+      "landbird_on_water": {
+        "removed": 27,
+        "of": 184,
+        "pct": 14.67
+      },
+      "waterbird_on_land": {
+        "removed": 13,
+        "of": 56,
+        "pct": 23.21
+      },
+      "waterbird_on_water": {
+        "removed": 35,
+        "of": 1057,
+        "pct": 3.31
+      }
+    },
+    "path": "results/prune_indices/prune02_seed0.pt",
+    "n_keep": 4699
+  },
+  {
+    "n_total": 4795,
+    "n_removed": 240,
+    "fraction": 0.05,
+    "class_balanced": true,
+    "removed_per_class": [
+      120,
+      120
+    ],
+    "seed": 0,
+    "tag": "prune05",
+    "score_epoch": 1,
+    "scores_path": "results/difficulty/difficulty_seed0_ep1.pt",
+    "group_report": {
+      "landbird_on_land": {
+        "removed": 59,
+        "of": 3498,
+        "pct": 1.69
+      },
+      "landbird_on_water": {
+        "removed": 61,
+        "of": 184,
+        "pct": 33.15
+      },
+      "waterbird_on_land": {
+        "removed": 25,
+        "of": 56,
+        "pct": 44.64
+      },
+      "waterbird_on_water": {
+        "removed": 95,
+        "of": 1057,
+        "pct": 8.99
+      }
+    },
+    "path": "results/prune_indices/prune05_seed0.pt",
+    "n_keep": 4555
+  },
+  {
+    "n_total": 4795,
+    "n_removed": 480,
+    "fraction": 0.1,
+    "class_balanced": true,
+    "removed_per_class": [
+      240,
+      240
+    ],
+    "seed": 0,
+    "tag": "prune10",
+    "score_epoch": 1,
+    "scores_path": "results/difficulty/difficulty_seed0_ep1.pt",
+    "group_report": {
+      "landbird_on_land": {
+        "removed": 151,
+        "of": 3498,
+        "pct": 4.32
+      },
+      "landbird_on_water": {
+        "removed": 89,
+        "of": 184,
+        "pct": 48.37
+      },
+      "waterbird_on_land": {
+        "removed": 38,
+        "of": 56,
+        "pct": 67.86
+      },
+      "waterbird_on_water": {
+        "removed": 202,
+        "of": 1057,
+        "pct": 19.11
+      }
+    },
+    "path": "results/prune_indices/prune10_seed0.pt",
+    "n_keep": 4315
+  }
+]

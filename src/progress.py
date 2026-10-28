@@ -77,7 +77,8 @@ def collect(cfg: dict, seeds: list[int], fractions: list[float]) -> list[Unit]:
     res = Path(paths["results_dir"])
     ck = Path(paths["ckpt_dir"])
     score_epoch = cfg["prune"]["score_epoch"]
-    tags = [f"prune{int(round(f * 100)):02d}" for f in fractions]
+    from .verify import arm_tags
+    tags = arm_tags(cfg)
     units: list[Unit] = []
 
     # ---- stage 1: the train cache and seed 0's difficulty scores

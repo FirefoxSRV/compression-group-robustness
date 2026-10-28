@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import gc
 import hashlib
 import json
 import random
@@ -411,6 +412,13 @@ def train_one_seed(
             scheduler.step()
 
             val = evaluate_cached(model, val_cache, device, batch_size=eval_batch_size)
+            # Release the MPS caching allocator's pool each epoch. `del` alone
+            # does not: MPS keeps freed blocks reserved, and on 16 GB macOS
+            # covers the growth with swap on the data volume -- which hit 33 GB
+            # and filled the disk twice on 2026-10-26. Cheap, and it keeps the
+            # footprint flat across ten epochs.
+            if device.type == "mps" and hasattr(torch.mps, "empty_cache"):
+                torch.mps.empty_cache()
             # SELECTION METRIC: plain unweighted validation accuracy.
             # Not worst-group (a group-aware intervention that would inflate the
             # ERM baseline), and not adjusted-average either -- adjusted
@@ -449,6 +457,13 @@ def train_one_seed(
                 print(f"[seed {seed}]   -> scored {len(d)} train samples at epoch "
                       f"{epoch}: d mean {d.mean():.4f} max {d.max():.4f} "
                       f"-> {scores_path}", flush=True)
+                # Scoring happens once, at one fixed epoch. Holding the 688 MB
+                # train cache for the remaining epochs buys nothing.
+                del scored, train_cache
+                train_cache = None
+                gc.collect()
+                if device.type == "mps" and hasattr(torch.mps, "empty_cache"):
+                    torch.mps.empty_cache()
 
             # A truncated run writes NO selection checkpoint and NO resume
             # state, at any epoch. Both guards are on `truncated`, not on the

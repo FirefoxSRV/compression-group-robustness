@@ -17,6 +17,10 @@ newtree() {
 load() { # load [env assignments...]
   cd "$T"
   CALLS="$T/calls.txt"; : > "$CALLS"
+  # run_phase2.sh derives VARIANT/FRACTIONS/TAG_PREFIX from configs/base.yaml
+  # when they are unset. Set them here so the fake tree needs no config and the
+  # tests stay about the skip/resume/failure logic, not about yaml.
+  export VARIANT=global TAG_PREFIX=prune FRACTIONS="05"
   RUN_PHASE2_LIB=1 source ./run_phase2.sh
   cd "$T"          # the script cd's to dirname $0, which when sourced is the harness
   PY="record"
@@ -40,7 +44,8 @@ echo "T2  stage3 skips a seed with no difficulty scores, runs one that has them"
 newtree; load
 touch results/difficulty/difficulty_seed0_ep1.pt
 SEEDS="0 1 2" FRACTIONS="05" stage3 >/dev/null 2>&1
-check "only seed 0 pruned" "-m src.prune_data --seed 0;" "$(calls)"
+check "only seed 0 pruned, with the variant passed through" \
+  "-m src.prune_data --seed 0 --variant global;" "$(calls)"
 
 echo "T3  stage3 skips a seed whose fractions are all already built"
 newtree; load
@@ -79,7 +84,7 @@ touch results/difficulty/difficulty_seed0_ep1.pt
 RECORD_RC=1
 SEEDS="0" FRACTIONS="05" stage3 >/dev/null 2>&1
 check "failure captured in FAILED[]" "1" "${#FAILED[@]}"
-check "failure labelled" "prune indices seed 0" "${FAILED[0]}"
+check "failure labelled with the variant" "prune indices seed 0 (global)" "${FAILED[0]}"
 RECORD_RC=0
 
 echo "T8  stage2 never touches seed 0"

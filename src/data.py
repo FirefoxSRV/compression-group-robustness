@@ -154,8 +154,36 @@ def build_eval_cache(data_dir, split: str, out_path, log_every: int = 1000) -> d
     return cache
 
 
-def load_eval_cache(path) -> dict:
-    return torch.load(path, map_location="cpu", weights_only=False)
+def load_eval_cache(path, mmap: bool | None = None) -> dict:
+    """Load a uint8 cache, memory-mapped by default.
+
+    Why mmap matters here. test_cache.pt is 832 MB and train_cache.pt 688 MB,
+    and a plain load makes them ANONYMOUS memory: on a 16 GB machine the kernel
+    can only relieve pressure by writing those pages to swap. macOS swap lives
+    on the data volume, and on the night of 2026-10-26 it grew to 33 GB and
+    filled the disk twice, costing one arm and several hours.
+
+    Memory-mapped, the same pages are FILE-BACKED and clean, so the kernel
+    simply drops them under pressure and re-reads from disk if they are needed
+    again -- no swap write at all. Measured on test_cache.pt: peak RSS 1025 MB
+    plain against 241 MB mapped.
+
+    Access is read-only and strided (`images[i:i+batch]` in evaluate_cached),
+    which is exactly the pattern mmap suits. Set mmap=False to force a full
+    read, or PHASE2_NO_MMAP=1 in the environment to do it globally.
+    """
+    if mmap is None:
+        mmap = os.environ.get("PHASE2_NO_MMAP", "0") == "0"
+    try:
+        return torch.load(path, map_location="cpu", weights_only=False, mmap=mmap)
+    except (RuntimeError, TypeError, ValueError) as e:
+        # An older archive format, or a torch without mmap support, is a reason
+        # to be slower -- not a reason to fail a 9-hour run.
+        if not mmap:
+            raise
+        print(f"[data] mmap load of {path} failed ({type(e).__name__}: {e}); "
+              f"falling back to a full read", flush=True)
+        return torch.load(path, map_location="cpu", weights_only=False)
 
 
 def normalize_uint8(batch_uint8: torch.Tensor, device) -> torch.Tensor:
