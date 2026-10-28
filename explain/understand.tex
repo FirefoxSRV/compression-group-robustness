@@ -103,14 +103,14 @@
 \draw[ar] (model) -- (comp);
 
 \node[blkg,minimum width=30mm,align=center] (avg) at (10.1,1.25)
-  {Average accuracy\\\scriptsize 98.2\% $\to$ 97.5\% \;\textbf{(-0.8)}};
+  {Average accuracy\\\scriptsize 98.3\% $\to$ 97.8\% \;\textbf{(-0.5)}};
 \node[blkb,minimum width=30mm,align=center] (wgn) at (10.1,-1.25)
-  {Worst group\\\scriptsize 70.4\% $\to$ 54.4\% \;\textbf{(-16.0)}};
+  {Worst group\\\scriptsize 73.3\% $\to$ 58.4\% \;\textbf{(-14.9)}};
 \draw[arg] (comp.east) -- ++(0.5,0) |- (avg.west);
 \draw[arb] (comp.east) -- ++(0.5,0) |- (wgn.west);
 
 \node[tiny,text width=42mm,align=center] at (10.1,-2.6)
-  {\textcolor{bad}{\bfseries 21$\times$ worse}, and the\\average almost hides it};
+  {\textcolor{bad}{\bfseries 29$\times$ worse}, and the\\average almost hides it};
 \end{tikzpicture}
 \end{center}
 
@@ -118,7 +118,9 @@
 \begin{center}
 {\color{ink2}\small
 Everything in here was checked against the actual files in the repo.\\
-Numbers come from \code{results/sweep.csv} and \code{results/summary\_table.csv}.}
+Every number is an average over \textbf{3 training runs} (seeds 0, 1, 2), from
+\code{results/sweep.csv},\\ \code{results/sweep\_spur*.csv} and
+\code{results/retention\_*.csv}. Both phases have been run.}
 \end{center}
 \vspace{0.4in}
 \clearpage
@@ -141,14 +143,20 @@ groups it was already bad at?}
 accuracy you'd never notice.}
 
 Chop 30\% of the weights out of our model and average accuracy drops by
-\textbf{0.8 points}. Sounds free. But the worst-performing group of images drops
-by \textbf{16 points}. That's 21 times bigger. Report only the average and you'd
-call that compression free, ship it, and the model would be meaningfully worse
-for exactly the cases it already struggled with.
+\textbf{0.5 points}. Sounds free. But the worst-performing group of images drops
+by \textbf{14.9 points}. That's about 29 times bigger. Report only the average
+and you'd call that compression free, ship it, and the model would be
+meaningfully worse for exactly the cases it already struggled with.
 
 It gets sharper. Delete 6 attention heads out of 72 -- that's 2.8\% of the
 weights we're allowed to touch -- and the average loses 1.7 points while the
-worst group loses \textbf{22.3}.
+worst group loses \textbf{18.2}.
+
+And then we asked the obvious follow-up: what if you \emph{fix} the robustness
+problem first, and only then compress? The short answer is that the fix works
+(worst group goes from 73.3\% to \textbf{87.9\%}), it \emph{does} survive gentle
+compression, and it stops surviving at exactly the point where compression has
+broken the model for everyone. Section~\ref{sec:phase2} has the numbers.
 
 \subsection*{The three words you need}
 
@@ -185,9 +193,10 @@ birds or learned backgrounds.
 \end{tikzpicture}
 \end{center}
 
-\noindent That's Phase 1, and it's done. Phase 2 (code written, not run yet)
-asks the follow-up: if you \emph{fix} the robustness problem first, does
-compression undo the fix? More on that in Section~\ref{sec:phase2}.
+\noindent That's Phase 1. Phase 2 adds one step in front of it -- throw away
+some training images first, then do the same thing -- and asks whether the fix
+survives. Both phases are done. Section~\ref{sec:phase2} has the answers,
+Section~\ref{sec:figures} explains how to read the pictures.
 
 
 % ================================================================ PART 1
@@ -891,11 +900,14 @@ writes the three figures and the summary table.
 markers and excluded from the trade-off plot. Section~\ref{sec:tricky} explains why that matters
 so much.
 
-\subsection{Phase 2 files (written, not run yet)}
+\subsection{Phase 2 files}
 
 \textbf{\f{src/prune\_data.py}} -- scores every training image by how ``hard'' it
-is, then removes the hardest ones in a class-balanced way and writes a list of
-which images to keep.
+is, then removes the hardest ones and writes a list of which images to keep. It
+holds \emph{two} rules, chosen with \code{--variant}: \code{global} deletes the
+hardest images anywhere (the version that failed), and \code{spurious} deletes
+only from the groups where the background agrees with the bird (the version that
+works). See Section~\ref{sec:phase2}.
 
 \textbf{\f{src/retention.py}} -- compares the ERM model against the pruned model
 at matched compression and computes the retention ratio. This is Phase 2's
@@ -905,13 +917,29 @@ headline number.
 \code{tag} column to the Phase 1 CSV so both phases share one schema. You'll
 never run it again.
 
-\textbf{\f{run\_phase2.sh}} -- runs the whole Phase 2 pipeline in four stages.
-Every step skips if its output already exists, so an interrupted night resumes
-by just running it again.
+\textbf{\f{run\_phase2.sh}} -- runs the whole Phase 2 pipeline in stages. Every
+step skips if its output already exists, so an interrupted night resumes by just
+running it again. Two stages exist only because an overnight run went wrong
+once: \textbf{stage 0} checks everything up front -- disk space, the image
+caches, and whether each saved model still matches the record of how it was
+trained -- and refuses to start if anything is off. \textbf{Stage 5} checks
+afterwards whether every piece of work really finished, by looking at the files
+rather than the log.
+
+\textbf{\f{src/preflight.py}} and \textbf{\f{src/verify.py}} are those two
+checks. \f{verify.py} is the one to run if you ever want a straight answer to
+``did it all actually finish?'' -- it reads the output files and says yes or no.
+The log is not a reliable guide: on one run, 12 steps reported failure and 11 of
+them had in fact completed their work and only tripped on the way out, when the
+disk filled up.
+
+\textbf{\f{src/progress.py}} -- prints the progress bar you can watch during a
+long run.
 
 \subsection{\texttt{tests/} -- the safety net}
 
-52 tests. They're not there for code coverage points; each one pins down a
+64 tests, plus 15 more that drive the run script itself. They're not there for
+code coverage points; each one pins down a
 specific claim the rest of the code makes. The source comments literally refer
 to them by number (``V4 is an equality check'').
 
@@ -928,14 +956,139 @@ V7b & the baseline hasn't collapsed & accuracy isn't a mirage \\
 V8  & \code{apply} never mutates its input & the sweep is trustworthy \\
 V10 & pruned set is class-balanced & Phase 2 removal is fair \\
 V12 & resume key separates seeds & a 2nd seed doesn't silently skip \\
+V13 & a cut-short run saves no model & it once destroyed the Phase 1 model \\
+V14 & Python and the shell agree on a name & else half-trained models look done \\
+V15 & the run script's skip/resume logic & an interrupted night resumes right \\
+V17 & the fix never deletes a weak-group image & the whole point of the fix \\
+V18 & the fix evens up the two classes & matches what the paper describes \\
 \bottomrule
 \end{tabular}
 \end{center}
 
 \noindent Run them with \code{pytest tests/ -q}. Takes about 35 seconds.
 
+\begin{note}{warn}{Why there are suddenly more of these}
+V13--V18 all exist because something went wrong on a real overnight run. V13 is
+the sharpest: the flag whose entire job was to stop the Phase 1 model being
+overwritten had its guard in the wrong place, and overwrote it. The model had to
+be retrained from scratch to get it back. Each of those gates is one specific
+mistake that can no longer repeat silently.
+\end{note}
+
 
 % ================================================================ PART 4
+\section{How to read the figures}\label{sec:figures}
+
+Running \f{figures.py} gives you three pictures and one table per model. They
+all follow the same handful of rules, so once you can read one you can read all
+of them. This section is those rules.
+
+\begin{note}{accent}{The single most important convention}
+A \textbf{filled dot} is a real measurement. A \textbf{hollow dot} is a model
+that has stopped working -- it has given up and started answering almost every
+image the same way. Hollow dots are drawn so the line still connects, but
+\textbf{you must not read anything into them}. Section~\ref{sec:tricky}
+explains why a broken model can look like it has a small gap.
+\end{note}
+
+\subsection{Figure 1 -- average vs worst group}
+
+Five small plots, one per compression method. In each one:
+
+\begin{itemize}[leftmargin=1.4em]
+\item \textbf{Left to right} always means \emph{more compression}. For the
+quantization plots that means the number of bits \emph{decreases} left to right
+(8, 6, 4, 3), because fewer bits is more squeezing. The axis is deliberately
+flipped so that ``worse'' is always rightward in every panel.
+\item \textbf{Up and down} is test accuracy, always on the same 0--100\% scale
+so the five panels are directly comparable.
+\item \textbf{Two lines.} The upper one is average accuracy -- what a normal
+evaluation would report. The lower one is worst-group accuracy.
+\end{itemize}
+
+\textbf{What you are looking for: the vertical distance between the two lines,
+and how fast it opens up.} That gap is the whole finding. If the two lines fell
+together, compression would be fair. They don't.
+
+\begin{center}
+\begin{tikzpicture}[scale=1.0]
+\draw[draw=rule,line width=0.9pt] (0,0) rectangle (9.6,4.0);
+\node[tiny,anchor=west] at (0.15,3.78) {test accuracy};
+\node[tiny,anchor=east] at (6.2,0.26) {more compression $\rightarrow$};
+% average line: barely drops
+\draw[good,line width=1.8pt] (0.6,3.40) -- (1.9,3.33) -- (3.2,3.17) -- (4.5,2.60) -- (6.2,1.60);
+\foreach \x/\y in {0.6/3.40,1.9/3.33,3.2/3.17,4.5/2.60} \fill[good] (\x,\y) circle (2.6pt);
+\fill[white] (6.2,1.60) circle (2.6pt); \draw[good,line width=1.6pt] (6.2,1.60) circle (2.6pt);
+% worst group line: falls off
+\draw[bad,line width=1.8pt] (0.6,2.60) -- (1.9,2.15) -- (3.2,1.35) -- (4.5,0.90) -- (6.2,0.78);
+\foreach \x/\y in {0.6/2.60,1.9/2.15,3.2/1.35} \fill[bad] (\x,\y) circle (2.6pt);
+\foreach \x/\y in {4.5/0.90,6.2/0.78} {\fill[white] (\x,\y) circle (2.6pt);
+  \draw[bad,line width=1.6pt] (\x,\y) circle (2.6pt);}
+% labels sit to the RIGHT of where each line ends, so nothing can overlap
+\node[tiny,text=good,anchor=west,align=left] at (6.45,1.68) {average --\\barely moves};
+\node[tiny,text=bad,anchor=west,align=left] at (6.45,0.80) {worst group --\\falls off a cliff};
+\draw[<->,draw=ink2,line width=0.7pt] (3.2,1.45) -- (3.2,3.07);
+\node[tiny,anchor=west,align=left] at (3.35,2.10) {this gap is\\the whole point};
+\node[tiny,text=muted,anchor=west] at (0.15,0.30) {hollow = collapsed};
+\end{tikzpicture}
+\end{center}
+
+\subsection{Figure 2 -- the same average, very different worst group}
+
+One scatter plot. Each dot is one of the 29 compression settings. Left--right is
+average accuracy, up--down is worst-group accuracy.
+
+\textbf{How to read it: pick a spot on the horizontal axis and look up.} You
+will find several dots stacked vertically. Those are compression settings that a
+standard evaluation would call \emph{equally good} -- same average accuracy --
+sitting at wildly different worst-group accuracies. That vertical spread is the
+information the average throws away. The further a dot sits below the others at
+its own horizontal position, the more that particular setting hurt the group
+that was already weakest.
+
+\subsection{Figure 3 -- which group actually pays}
+
+Five panels again, same axes as Figure~1, but now \textbf{four lines, one per
+group}. The four groups are the two bird types crossed with the two
+backgrounds.
+
+\textbf{How to read it:} two of the lines stay high and two dive. The two that
+dive are the groups where the background disagrees with the bird -- a land bird
+photographed over water, a water bird photographed on land. Those are the images
+where the background shortcut gives the wrong answer, so they are the ones that
+need the model to have actually learned birds. Figure~3 is the picture of
+\emph{who} pays for compression, where Figure~1 only says \emph{that} someone
+does.
+
+\subsection{The summary table}
+
+\f{summary\_table.csv} is the same information as Figure~1 in numbers, one row
+per compression setting. The columns worth reading first:
+
+\begin{center}\small
+\begin{tabular}{@{}ll@{}}
+\toprule
+\code{achieved\_sparsity} & how much was really removed, not how much we asked for \\
+\code{acc\_adj\_avg} & the average accuracy a normal evaluation reports \\
+\code{acc\_wg} & worst-group accuracy \\
+\code{gap\_adj} & the two subtracted -- the number this project is about \\
+\code{pred\_mean} & the collapse detector. Near 0 or near 1 means broken \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent If you only ever look at two columns, look at \code{acc\_wg} and
+\code{pred\_mean}: the first is the result, the second tells you whether to
+believe it.
+
+\begin{note}{warn}{A trap worth naming}
+Some rows have a \emph{small} gap and look reassuring. Check \code{pred\_mean}
+before believing any of them. A model that answers ``land bird'' to every single
+image has no gap at all between its groups, because it is equally useless on all
+of them. A tiny gap can mean ``fair'' or it can mean ``dead'', and only
+\code{pred\_mean} tells you which.
+\end{note}
+
 \section{The tricky bits}\label{sec:tricky}
 
 This is the part that separates ``I read the code'' from ``I understand the
@@ -1064,10 +1217,10 @@ were actually one seed copied. Gate V12 now pins this down.
 % ================================================================ PART 5
 \section{Phase 2: can we fix it, and does the fix survive?}\label{sec:phase2}
 
-\begin{note}{warn}{Status: code written, not run yet}
-Everything in this part describes code that exists and is tested, but the
-experiment hasn't been executed. There are no Phase 2 numbers yet. Don't quote
-any.
+\begin{note}{good}{Status: run, 3 seeds, and it worked}
+Everything in this part has been executed. Headline: the fix takes worst-group
+accuracy from \textbf{73.3\%} to \textbf{87.9\%}, and that gain survives gentle
+compression but not heavy compression. Numbers below.
 \end{note}
 
 Phase 1 compressed a model that was never made robust in the first place. Fair
@@ -1122,18 +1275,67 @@ Big $d_i$ means the model is confidently wrong or very unsure -- a hard image.
 \end{tikzpicture}
 \end{center}
 
-\textbf{Two details that matter:}
+\subsection{We got this wrong the first time, and the wrong version is
+instructive}
+
+Our first attempt deleted the hardest images \emph{anywhere} in the training
+set, without ever looking at which group they belonged to. That felt like the
+honest thing to do -- a fix that needs group labels is a weaker fix. We ran it,
+and worst-group accuracy got \emph{worse}, steadily worse the more we deleted.
+
+Here is why, and it is obvious in hindsight. Think about which images a model
+finds hardest. They are exactly the ones where the background lies: the water
+bird standing on grass, the land bird over a lake. Those images are hard
+\emph{because} the shortcut fails on them. So ``delete the hardest images''
+quietly means ``delete the images that were holding the weak groups up''.
+
+We measured it. The worst group has only 56 training images to begin with. At a
+10\% deletion budget, the group-blind rule threw away \textbf{38 of those 56}:
+
+\begin{center}\small
+\begin{tabular}{@{}lrrrr@{}}
+\toprule
+& \multicolumn{4}{c}{share of each group deleted} \\
+\cmidrule(l){2-5}
+deletion budget & land/land (3498) & land/water (184) & \textbf{water/land (56)} & water/water (1057) \\
+\midrule
+1\%  & 0.3\% & 7.6\% & \textbf{14\%} & 1.5\% \\
+2\%  & 0.6\% & 15\%  & \textbf{23\%} & 3.3\% \\
+5\%  & 1.7\% & 33\%  & \textbf{45\%} & 9.0\% \\
+10\% & 4.3\% & 48\%  & \textbf{68\%} & 19\%  \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent And then we actually read the paper properly, and found it says this
+itself. For a dataset like Waterbirds, where you \emph{can} tell which images
+have the misleading background, the paper's method is told the groups and
+deletes only from the groups the shortcut agrees with. It states plainly that
+deleting the globally hardest images ``is not feasible'' here, for precisely the
+reason our numbers show.
+
+\begin{note}{accent}{The corrected rule, in one sentence}
+Only consider images where the background \emph{agrees} with the bird -- the
+easy, shortcut-confirming ones -- and delete the hardest of those. Never touch
+the images where the background disagrees. Those are the ones teaching the model
+to actually look at the bird.
+\end{note}
+
+So the project now has both versions, and keeps both:
 
 \begin{itemize}[leftmargin=1.4em]
-\item \textbf{No group labels anywhere.} We never tell the pruner which images
-are minority-group. It only sees difficulty. That's essential -- the whole point
-is a fix that works without knowing the groups, since in the real world you
-usually don't.
-
-\item \textbf{Class-balanced removal.} We delete the same \emph{number} from each
-class, so the removal itself doesn't quietly rebalance the classes and create a
-different effect we'd mistake for robustness.
+\item \f{--variant global} -- the group-blind rule. Kept because it demonstrates
+the failure the paper warns about. Its results live in \code{old\_run\_Oct26/}.
+\item \f{--variant spurious} -- the corrected rule. This is the one that
+reproduces the paper, and the one all the numbers below come from.
 \end{itemize}
+
+\textbf{One more detail.} The corrected rule also levels up the two bird
+classes, so that after deleting there are the same number of land birds as water
+birds. Waterbirds starts badly lopsided (3682 against 1113), and that lopsidedness
+is itself part of the problem. This is why the deletion budgets are so large --
+25\%, 50\%, 75\% -- where the first attempt used 1--10\%. Most of that budget is
+spent just evening up the two classes.
 
 \subsection{The measurement: retention ratio}
 
@@ -1181,6 +1383,139 @@ it is still there after compressing.
   {$R \approx 0$ -- the curves merge.\\\scriptsize compression silently undid your fix};
 \end{tikzpicture}
 \end{center}
+
+\subsection{The answers}
+
+\textbf{Question one: does the fix work at all?} Yes, clearly, and at every
+deletion budget we tried. All numbers are averages over 3 training runs.
+
+\begin{center}\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+model & worst group & average & gain in worst group \\
+\midrule
+no fix (plain training) & 73.3\% & 98.3\% & --- \\
+delete 25\% & 86.4\% & 94.7\% & \textbf{+13.1} \\
+delete 50\% & \textbf{87.9\%} & 94.4\% & \textbf{+14.6} \\
+delete 75\% & 87.3\% & 92.1\% & \textbf{+14.0} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent Two things to notice. The gain is roughly the same whichever budget
+you pick, which is reassuring -- it means you don't have to tune the budget
+carefully. And the average accuracy \emph{drops} by about 4 points while the
+worst group gains 14. That trade is the entire point: you are deliberately
+giving up a little overall accuracy to stop the model relying on backgrounds.
+The paper reports the same shape of trade.
+
+For reference, the paper gets 90.9\% worst group where we get 87.9\%. We are
+about 3 points short, on a different model and a tenth of the training time.
+Section~\ref{sec:shortfall} explains the gap honestly, because it is
+interesting in itself.
+
+\textbf{Question two -- the real one: does the fix survive compression?}
+
+\begin{note}{accent}{The answer, and it is not what we first thought}
+The fix survives compression right up to the point where compression has
+wrecked the model \emph{for everybody}. Past that point the question stops
+meaning anything.
+\end{note}
+
+Here is magnitude pruning, the gentlest of the four methods:
+
+\begin{center}\small
+\begin{tabular}{@{}lrrrl@{}}
+\toprule
+weights removed & no fix & with fix & $R$ & what it means \\
+\midrule
+none      & 73.3\% & 87.9\% & 1.00 & the fix bought 14.6 points \\
+30\%      & 58.4\% & 81.9\% & \textbf{1.64} & still there, and wider than before \\
+50\%      & 23.7\% & 53.0\% & \textbf{2.04} & still there \\
+70\%      & 13.7\% & 13.4\% & $-0.15$ & gone -- both models are wrecked \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent Read the 70\% row carefully, because it is easy to misread. $R$ went
+to zero not because compression picked on the fix, but because at 70\% sparsity
+\emph{neither} model works any more -- both are down near 13\%. $R$ is a ratio
+of two gaps, and when both models are broken there is no gap left to measure in
+either. A zero there means ``question no longer applies'', not ``fix destroyed''.
+
+We checked this across all 195 settings that weren't collapsed, and it is the
+cleanest result in the project:
+
+\begin{center}\small
+\begin{tabular}{@{}lrrr@{}}
+\toprule
+is the compressed model still usable? & settings & average $R$ & share with $R \ge 0.75$ \\
+\midrule
+yes -- worst group still above 40\% & 114 & \textbf{+1.30} & \textbf{96\%} \\
+borderline -- 25\% to 40\%          & 14  & +1.30 & 86\% \\
+no -- worst group below 25\%        & 67  & $-0.20$ & 13\% \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent \textbf{If compression leaves a working model, the fix is still there
+-- 96\% of the time, for all four compression methods.} If compression has
+already destroyed the model, $R$ is noise. There is no middle ground and no
+method that behaves specially.
+
+\begin{note}{warn}{The mistake we nearly published}
+Our first pass averaged $R$ within each compression method and got numbers like
+``magnitude 1.26, FFN 0.31'', and we wrote down that compression harms the fix
+differently depending on the method. That was wrong. Averaging $R$ over
+compression levels smears a \textbf{$+2.04$ at 50\% sparsity} together with a
+\textbf{$-0.15$ at 70\%} and produces a number describing neither.
+
+The methods do differ, but in \emph{where the model dies}, not in whether the
+fix survives: FFN-neuron removal kills it by 30\%, magnitude pruning survives to
+50\%, per-channel quantization survives all the way down to 3 bits. That is
+Phase~1's conclusion again -- the four methods are not interchangeable.
+
+Lesson for reading any of this: \textbf{$R$ must always be read against a
+compression level, never averaged over them.}
+\end{note}
+
+\subsection{Why we're 3 points short of the paper}\label{sec:shortfall}
+
+Worth understanding, because it is a real limitation of the method rather than
+a bug in our code.
+
+The fix depends on ranking training images by how hard they are. That ranking is
+only useful if the model hasn't learned the training set yet -- once it gets
+nearly everything right, almost every image scores ``easy'' and the ranking
+stops carrying information.
+
+The paper trains a ResNet-50 for 100 epochs and scores after the first. Ours is
+a pretrained vision transformer fine-tuned at a very low learning rate, and it
+reaches \textbf{97.9\% training accuracy after two passes}. So by the time we
+score, the ranking has already gone flat:
+
+\begin{center}\small
+\begin{tabular}{@{}lrr@{}}
+\toprule
+of the images our rule deletes & chosen on real difficulty & already near-perfect \\
+\midrule
+delete 25\% & 1080 & \textbf{2017 (65\%)} \\
+delete 50\% & 1344 & \textbf{2281 (63\%)} \\
+delete 75\% & 1479 & \textbf{2676 (64\%)} \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\noindent About two-thirds of what we delete are images the model already
+classifies almost perfectly. The method's premise is ``delete the hard ones'',
+and we are mostly deleting easy ones, because there aren't enough hard ones left
+to fill the budget. What we're left doing is closer to ``shrink and balance the
+training set'', which is itself a known way to help the weak groups -- hence we
+still get most of the benefit, just not all of it.
+
+That's a genuine finding about the method: \textbf{it needs a model that hasn't
+yet fitted its training data.} In the transfer-learning setting most people
+actually work in, that condition is easy to violate without noticing.
 
 \subsection{Two things the code refuses to do}
 
@@ -1274,18 +1609,27 @@ open, and stay on mains power.
 \subsection{The three things to remember}
 
 \begin{enumerate}[leftmargin=1.6em]
-\item \textbf{Average accuracy hides group damage.} 0.8 points vs 16 points, from
-the same operation.
-\item \textbf{Structured compression hurts more than it looks.} 6 attention heads
-out of 72 cost 22 points of worst-group accuracy.
-\item \textbf{A collapsed model can look fine.} 76.8\% adjusted average from a
-model that predicts one class for every image. Always check \code{pred\_mean}.
+\item \textbf{Average accuracy hides group damage.} 0.5 points vs 14.9 points,
+from the same operation.
+\item \textbf{Structured compression hurts more than it looks.} 6 attention
+heads out of 72 cost 18 points of worst-group accuracy.
+\item \textbf{A collapsed model can look fine.} A model that predicts one class
+for every image has no gap between its groups at all. Always check
+\code{pred\_mean} before believing a small gap.
+\item \textbf{The fix works, and it survives compression until compression
+breaks the model outright.} Worst group 73.3\% $\to$ 87.9\%, and that gain is
+still there 96\% of the time in any setting where the compressed model is still
+usable.
+\item \textbf{Never average a ratio over compression levels.} Doing that is how
+we briefly convinced ourselves of a conclusion that wasn't there.
 \end{enumerate}
 
 \bigskip
 \begin{center}
-{\color{ink2}\small Built from the repo as it stands. Phase 1 results are real and
-reproducible; Phase 2 is code only, so far.}
+{\color{ink2}\small Built from the repo as it stands. Both phases are run, over
+3 seeds.\\ Phase 1 is in \code{results/sweep.csv}; Phase 2 in
+\code{results/sweep\_spur*.csv} and \code{results/retention\_*.csv}.\\
+The first, failed Phase 2 attempt is kept in \code{old\_run\_Oct26/}.}
 \end{center}
 
 \end{document}
