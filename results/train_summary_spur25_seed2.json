@@ -1,0 +1,12 @@
+{
+  "seed": 2,
+  "tag": "spur25",
+  "best_epoch": 2,
+  "truncated": false,
+  "best_val_acc_avg": 0.9366138448707256,
+  "checkpoint": "checkpoints/vit_s16_waterbirds_spur25_seed2.pt",
+  "n_train": 1698,
+  "n_train_full": 4795,
+  "log": "results/train_log_spur25_seed2.csv",
+  "scores": null
+}

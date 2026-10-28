@@ -56,6 +56,28 @@ def _trained(ckpt: Path) -> bool:
     return is_run_complete(ckpt)
 
 
+N_TRAIN_FULL = 4795
+
+
+def _epoch_cost(idx_path: Path) -> float:
+    """Seconds per epoch for an arm, scaled by how much data it actually trains on.
+
+    T_EPOCH is calibrated on the full 4795-sample split. The identifiable-setting
+    arms train on 640-1698 samples, so charging them a full-split epoch
+    overstates the remaining work roughly threefold -- it read "6.6 h remaining"
+    against a measured ~3.8 h. The keep-index file records n_keep, so use it.
+    """
+    if not idx_path.exists():
+        return T_EPOCH
+    try:
+        import torch
+        blob = torch.load(idx_path, map_location="cpu", weights_only=False)
+        n_keep = int(blob.get("n_keep") or blob["keep"].numel())
+        return T_EPOCH * max(n_keep, 1) / N_TRAIN_FULL
+    except Exception:
+        return T_EPOCH
+
+
 class Unit:
     """One piece of work: its cost, how much is done, and how to say so."""
 
@@ -128,11 +150,12 @@ def collect(cfg: dict, seeds: list[int], fractions: list[float]) -> list[Unit]:
             ckpt = ck / f"vit_s16_waterbirds_{tag}_seed{s}.pt"
             log = res / f"train_log_{tag}_seed{s}.csv"
             epochs = _rows(log)
-            done = EPOCHS * T_EPOCH if _trained(ckpt) else epochs * T_EPOCH
+            t_ep = _epoch_cost(res / "prune_indices" / f"{tag}_seed{s}.pt")
+            done = EPOCHS * t_ep if _trained(ckpt) else epochs * t_ep
             note = "done" if _trained(ckpt) else (
                 f"epoch {epochs}/{EPOCHS}" if epochs else "")
             units.append(Unit("Phase 2  pruned retrains", f"{tag} seed {s}",
-                              EPOCHS * T_EPOCH, done, note))
+                              EPOCHS * t_ep, done, note))
 
             n = _rows(res / f"sweep_{tag}.csv",
                       lambda r, s=s, tag=tag: str(r.get("seed")) == str(s)
@@ -190,7 +213,9 @@ def render(cfg: dict, seeds: list[int], fractions: list[float],
     if started:
         el = time.time() - started
         out.append(f"elapsed {el/3600:.2f} h    work remaining ~{remaining_h:.1f} h"
-                   f"    (estimate, {T_EPOCH}s/epoch)")
+                   f"    (estimate: {T_EPOCH}s/epoch at full split, scaled by "
+                   f"each arm's train size; "
+                   f"{int(T_SWEEP_CONFIG * SWEEP_CONFIGS // 60)}min/sweep)")
     else:
         out.append(f"work remaining ~{remaining_h:.1f} h")
     out.append("")
