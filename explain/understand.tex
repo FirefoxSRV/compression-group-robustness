@@ -649,10 +649,40 @@ why that matters:
 \end{tikzpicture}
 \end{center}
 
-\textbf{Phase 2 additions} (written, not run yet): \code{prune\_indices} to train
-on a subset, \code{score\_epoch} to record per-sample difficulty, and
-\code{stop\_after\_epoch} to score without overwriting an existing checkpoint.
-Section~\ref{sec:phase2} explains what those are for.
+\textbf{What Phase 2 added to this file}: \code{prune\_indices} to train on a
+subset, \code{score\_epoch} to record per-sample difficulty, and
+\code{stop\_after\_epoch} to score a model without overwriting an existing
+checkpoint. Section~\ref{sec:phase2} explains what those are for.
+
+Three more flags exist only because a long unattended run went wrong, and they
+are worth knowing about if you ever leave this training overnight:
+
+\begin{itemize}[leftmargin=1.4em]
+\item \code{--resume} picks a killed run back up from where it stopped, putting
+the optimiser and the learning-rate schedule back exactly as they were. Without
+that last part you'd restart mid-schedule and get a model that looks fine and
+isn't.
+\item \code{--allow-overwrite} is a refusal, not a feature. A fresh run will not
+start on top of a model that already exists unless you say this. Saved models
+are not backed up anywhere and cost half an hour each to rebuild.
+\item \code{--num-workers} loads images on several threads. It is set to 0,
+which sounds wrong but was measured: it made no difference to speed here, and 0
+reproduces Phase 1's results exactly, so 0 it is.
+\end{itemize}
+
+\begin{note}{bad}{The bug these came from}
+\code{stop\_after\_epoch} exists to score a model \emph{without} touching the
+saved copy. Its check was one line too late, so a scoring run reached the
+``save if this is the best so far'' step first and overwrote the Phase 1 model
+with a much worse, half-trained one. The flag whose only job was to protect that
+file is what destroyed it.
+
+Nothing noticed -- the replacement looked like a perfectly normal model. It had
+to be retrained from scratch, which worked only because training here turns out
+to be exactly repeatable: all ten epochs came back identical to the original.
+Gate V13 now checks this specific case, and \f{preflight.py} re-checks every
+saved model against the record of how it was trained before any long run starts.
+\end{note}
 
 \subsection{\texttt{src/compress/} -- the four methods, one contract}
 
