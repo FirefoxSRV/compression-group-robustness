@@ -316,13 +316,20 @@ adjusted average   & 98.2\% & reweighted to match \emph{training} group frequenc
 \end{center}
 
 \begin{note}{warn}{Why two different ``averages''?}
-The test set is way more balanced than the training set (test is
-2255/2255/642/642; training is 3498/184/56/1057). So a plain test average
-over-weights the rare groups compared to how often they actually show up in
-training. The \emph{adjusted} average reweights per-group accuracy by training
-frequency, and that's the $\sim$98\% number everyone in this research area
-quotes. We report it so our numbers are comparable to published work. The code
-is \f{metrics.py}, function \code{adjusted\_average}.
+Not because the test set has equal numbers of each bird -- it doesn't, and
+neither split does. Both are about 77\% land birds.
+What the test set balances is the \emph{background}. Land birds are 2255 on
+land and 2255 on water; water birds are 642 and 642. So the background predicts
+the label 95\% of the time in training and exactly 50\% at test time. That is
+the whole point of the construction: at test time the shortcut is worth
+nothing.
+The consequence is that the two groups that fight the shortcut are 5\% of
+training but 50\% of the test set. A plain test average hands them ten times the
+weight training ever gave them. The \emph{adjusted} average reweights per-group
+accuracy by training frequency instead, and that's the $\sim$98\% number
+everyone in this research area quotes. We report it so our numbers are
+comparable to published work. The code is \f{metrics.py}, function
+\code{adjusted\_average}.
 \end{note}
 
 \subsection{What ``compression'' means here}
@@ -1213,11 +1220,14 @@ This trips everyone up, so here it is as a picture:
 \end{tikzpicture}
 \end{center}
 
-\noindent The test set is deliberately balanced; training isn't. A plain average
-over the test set therefore over-weights rare groups relative to reality. The
-adjusted average re-weights back to training proportions, which is the
-convention in this research area. That's the only reason our headline is 98.2\%
-instead of 91.7\% -- same model, same predictions, different weighting.
+\noindent Careful about what ``balanced'' means here. The test set is not
+balanced by bird: both splits are about 77\% land birds. It is balanced by
+\emph{background} -- 50/50 inside each bird class, where training is 95/5.
+So the two groups that fight the shortcut are 5\% of training and 50\% of the
+test set, and a plain test average gives them ten times the weight they had in
+training. The adjusted average re-weights back to training proportions, which is
+the convention in this research area. That's the only reason our headline is
+98.2\% instead of 91.7\% -- same model, same predictions, different weighting.
 
 \subsection{The resume bug (a real one we found and fixed)}
 

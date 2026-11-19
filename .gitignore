@@ -23,11 +23,17 @@ checkpoints/
 results/difficulty/
 results/prune_indices/
 
-# LaTeX build artifacts (scoped to explain/ so run logs elsewhere survive)
+# LaTeX build artifacts (scoped, so run logs elsewhere survive)
 explain/*.aux
 explain/*.log
 explain/*.out
 explain/*.toc
+report/*.aux
+report/*.log
+report/*.out
+report/*.bbl
+report/*.blg
+report/report.pdf
 *.synctex.gz
 
 # One-shot migration backup
