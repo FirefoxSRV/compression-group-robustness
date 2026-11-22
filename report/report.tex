@@ -33,10 +33,6 @@
 \captionsetup[table]{skip=4pt}
 \bibliographystyle{plainnat}
 
-% Figure 1 costs a seventh page. The course limit is on body text excluding
-% figures, so it does not affect compliance -- flip to \showfigtrue to print it.
-\newif\ifshowfig
-\showfigfalse
 
 \title{\vspace{-2.5em}Does Model Compression Undo Robustness?\\
 \large Group robustness of compressed vision transformers,\\
@@ -250,7 +246,6 @@ assertions.
 \subsection{Compression damage is group-asymmetric}
 \label{sec:phase1}
 
-\ifshowfig
 \begin{figure}[t]
 \centering
 \includegraphics[width=0.78\textwidth]{figures/fig1_damage.png}
@@ -259,12 +254,11 @@ seeds. The two curves meet near the floor only because the model has
 collapsed to one class.}
 \label{fig:damage}
 \end{figure}
-\fi
 
 Table~\ref{tab:phase1} gives the plain model. The dense checkpoint reaches
 98.3\% adjusted average and 73.3\% worst group, a gap of 25 points that the
-shortcut explains and that compression widens in every family\ifshowfig{}
-(Figure~\ref{fig:damage})\fi.
+shortcut explains and that compression widens in every family
+(Figure~\ref{fig:damage}).
 
 \begin{table}[t]
 \centering
@@ -376,7 +370,7 @@ family mean of $+1.26$ for magnitude pools that $+2.04$ with a $-0.15$ at
 Worst-group accuracy is a minimum over four groups and says nothing about
 which group is binding. Decomposing the gain per group
 (Table~\ref{tab:pergroup}) shows that the targeted group keeps benefiting
-long after worst-group accuracy stops reporting it.
+long after worst-group accuracy stops reporting it (Figure~\ref{fig:pergroup}).
 
 \begin{table}[t]
 \centering
@@ -396,6 +390,17 @@ Sparsity & g0 & g1 & \textbf{g2} & g3 & worst group & binding group \\
 \bottomrule
 \end{tabular}
 \end{table}
+
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.74\textwidth]{figures/fig4_per_group_retention.png}
+\caption{Where worst-group accuracy stops tracking the repair. Gain of the
+repaired model over the plain one, magnitude pruning on the delete 50\% arm,
+mean of 3 seeds. The two curves coincide until 50\%; at 70\% the worst-group
+gain has fallen to $-0.4$ while waterbird-on-land is still 21 points ahead,
+because the binding group has moved to the majority group.}
+\label{fig:pergroup}
+\end{figure}
 
 At 70\% sparsity the binding group moves to landbird-on-land, the majority
 group, which has nothing to do with the spurious correlation, so worst-group
@@ -424,7 +429,7 @@ Compression damages the groups a model was already worst at, out of sight of
 average accuracy by a factor of 29. The repair of
 \citet{mulchandani2025severing} reproduces on a transformer at a tenth of the
 schedule and then survives compression: wherever the compressed model remains
-usable, 96\% of settings keep at least three quarters of the dense gain, and
+usable, 95\% of settings keep at least three quarters of the dense gain, and
 the gain often widens because the unrepaired model degrades faster.
 
 We see four limits on this. The study covers one dataset and one architecture, and
