@@ -61,8 +61,8 @@ targets, and worst-group accuracy has stopped pointing at that group.
 \section{Introduction}
 
 Models are usually compressed just before deployment, and this step tends to
-be evaluated less carefully than training. The usual report is top-1 accuracy before and after, an average over the
-test set, which cannot show that a small subgroup has been abandoned. The problem is worse once an
+be evaluated less carefully than training. The usual report is top-1 accuracy before and after, an average that cannot
+show a small subgroup has been abandoned. The problem is worse once an
 intervention has been applied. A practitioner who finds that a classifier relies on a spurious background
 feature and fixes it has improved accuracy only on rare groups, so if
 compression undoes the fix the average will not report it.
@@ -70,9 +70,9 @@ compression undoes the fix the average will not report it.
 We work on Waterbirds \citep{sagawa2020distributionally}, where the
 background predicts the label for 95\% of the training set, and on a
 ViT-S/16 \citep{dosovitskiy2021image}. Phase 1 fine-tunes without group-aware machinery, compresses the checkpoint
-four ways, and measures per-group accuracy at every setting. Phase 2 repairs the model
-first, using the data pruning of \citet{mulchandani2025severing}, then runs
-the identical sweep and asks how much of the repair is left. This report
+four ways, and measures per-group accuracy at every setting. Phase 2 repairs the model first, using the data pruning of
+\citet{mulchandani2025severing}, then runs the identical sweep and asks how
+much repair is left. This report
 contributes the following.
 
 \begin{enumerate}[leftmargin=1.4em,itemsep=0.15em,topsep=0.2em]
@@ -107,22 +107,22 @@ their identifiable setting, the rule uses group labels and draws deletion
 candidates only from the spurious-aligned group of each class. We reproduce
 that rule and treat the resulting model as the thing to compress.
 
-\textbf{Compression and fairness.} Each of our four families is
-individually well characterized, and \citet{krishnamoorthi2018quantizing} in
-particular showed that per-channel scales recover most of what per-tensor
-scales lose. \citet{hooker2019forget} found that pruned CNNs concentrate new errors on
+\textbf{Compression and fairness.} Each of our four families is individually well characterized, with the primary
+references given in Section~\ref{sec:background};
+\citet{krishnamoorthi2018quantizing} showed that per-channel scales recover
+most of what per-tensor scales lose. \citet{hooker2019forget} found that pruned CNNs concentrate new errors on
 atypical examples, and \citet{hooker2020bias} tied that to demographic
 subgroups on CelebA. Our question differs from theirs in two ways: we work on a transformer, and
 the quantity we track comes from a repair we installed beforehand and may
 have removed again.
 
-\section{Background and problem description}
+\section{Background and problem description} \label{sec:background}
 
 \textbf{Shortcut learning.} A spurious correlation is a feature that predicts
 the label during training without being part of what the label means. A
 classifier that leans on one scores well on a test average and fails on the
 examples where the feature points the wrong way, so the average conceals the
-failure. The standard remedy is to partition the data by label and spurious
+failure. The standard way to measure it is to partition the data by label and spurious
 feature and report the minimum accuracy over those groups, which is the
 worst-group accuracy of \citet{sagawa2020distributionally}.
 
@@ -133,20 +133,16 @@ multi-head self-attention, here 6 heads of width 64 across a 384-channel
 embedding, and a two-layer MLP that widens 384 channels to 1536 and back.
 That gives 72 attention heads in total, and our compression touches only the
 weights inside those blocks. Magnitude pruning \citep{han2015learning} sets
-the smallest weights to zero and leaves every tensor shape intact. Structured
-pruning instead deletes whole units, an attention head
-\citep{michel2019sixteen} or an MLP neuron, which changes what the layer
-computes rather than how sparse it is. Quantization
-\citep{krishnamoorthi2018quantizing} keeps every weight and stores it at
-lower precision, where the granularity of the scale matters as much as the
-bit width.
+the smallest weights to zero and leaves every tensor shape intact. Structured pruning instead deletes whole units, an attention head
+\citep{michel2019sixteen} or an MLP neuron, so its zeros arrive in blocks rather than scattered. Quantization \citep{krishnamoorthi2018quantizing} keeps every weight and
+stores it at lower precision, with the scale either shared across a whole
+matrix or set per output row.
 
 \textbf{Data and metric.} Waterbirds pastes cropped birds onto Places
 \citep{zhou2018places} backgrounds. We read the official splits from \texttt{metadata.csv}: 4795
-training images, 1199 validation, 5794 test. A group is $g = 2y + b$ for
-label $y$ and background $b$, giving landbird-on-land (3498 training images),
-landbird-on-water (184), waterbird-on-land (56) and waterbird-on-water
-(1057), written g0 to g3 in that order. The two middle groups contradict the shortcut, and
+training images, 1199 validation, 5794 test. A group is $g = 2y + b$ for label $y$ and background $b$, giving landbird-on-
+land (3498 training images), landbird-on-water (184), waterbird-on-land (56)
+and waterbird-on-water (1057), written g0 to g3. The two middle groups contradict the shortcut, and
 waterbird-on-land, with 56 training examples, is the worst group in almost
 every measurement below. Because the test split is far more group-balanced
 than the training split, a plain test-set mean is not comparable to published
@@ -156,9 +152,8 @@ per-group accuracy by training frequency.
 \textbf{Three choices that decide what is being measured.} Training is
 deliberately group-blind: no reweighting, no balanced sampler, no robust
 objective. The model is supposed to learn the shortcut, because one that
-never learned it leaves nothing for compression to damage. Model selection is
-on plain validation accuracy, since selecting on the worst group is itself a
-group-aware intervention that would inflate the baseline. And nothing is retrained after compression, since retraining would let the
+never learned it leaves nothing for compression to damage. Model selection is on plain validation accuracy, since selecting on the worst
+group is itself a group-aware intervention. And nothing is retrained after compression, since retraining would let the
 network refit the shortcut and would measure something different.
 
 \textbf{The question.} With $W(s)$ the worst-group accuracy and $A(s)$ the
@@ -260,7 +255,7 @@ checks.
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.70\textwidth]{figures/fig1_damage.png}
+\includegraphics[width=0.66\textwidth]{figures/fig1_damage.png}
 \caption{Average accuracy hides the damage: magnitude pruning, mean of 3
 seeds. The gap opens from 30\% onward. Past 80\% the model has collapsed to
 a single class, so neither curve reports anything meaningful.}
@@ -405,11 +400,11 @@ Sparsity & g0 & g1 & \textbf{g2} & g3 & worst group & binding group \\
 
 \begin{figure}[t]
 \centering
-\includegraphics[width=0.66\textwidth]{figures/fig4_per_group_retention.png}
+\includegraphics[width=0.56\textwidth]{figures/fig4_per_group_retention.png}
 \caption{Where worst-group accuracy stops tracking the repair. Gain of the
 repaired model over the plain one, magnitude pruning on the delete 50\% arm,
-mean of 3 seeds. The two curves coincide until 50\%; at 70\% the worst-group
-gain has fallen to $-0.4$ while waterbird-on-land is still 21 points ahead,
+mean of 3 seeds. The curves coincide up to 30\% and separate from 50\% on; at 70\% the worst-
+group gain has fallen to $-0.4$ while waterbird-on-land is 21 points ahead,
 because the binding group has moved to the majority group.}
 \label{fig:pergroup}
 \end{figure}
@@ -456,22 +451,21 @@ in a more robustness-preserving order. Finally, worst-group accuracy on a
 
 \begin{table}[H]
 \centering
-\small
-\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.225\textwidth}p{0.725\textwidth}@{}}
+\footnotesize
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{0.20\textwidth}p{0.755\textwidth}@{}}
 \toprule
 \textbf{Shreyas Visweshwaran} \texttt{sviswes}
 & All four compression families behind one \texttt{apply} contract, with
-exact structured removal; the frozen 21.2M-weight scope; the 29-setting
-Phase 1 sweep. \\
+exact structured removal; the frozen 21.2M-weight scope; the Phase 1 sweep. \\
 \addlinespace
 \textbf{Swasti Sadanand} \texttt{ssadana}
-& The Phase 2 data pruning and both selection rules; the retention ratio
-$R$, the rule leaving it undefined when the dense gain is within noise, and
-the usability buckets; the comparison against the published result. \\
+& The Phase 2 data pruning and both selection rules; the retention ratio $R$,
+the rule leaving it undefined when the dense gain is within noise, and the
+usability buckets; the comparison against the published result. \\
 \addlinespace
 \textbf{Anusha Upadhyay} \texttt{aupadhy6}
-& Group indexing, per-group and adjusted-average accuracy, the collapse
-gate; 64 automated tests and 15 shell checks; the figures and tables. \\
+& Group indexing, per-group and adjusted-average accuracy, the collapse gate;
+64 automated tests and 15 shell checks; the figures and tables. \\
 \bottomrule
 \end{tabular}
 \end{table}
