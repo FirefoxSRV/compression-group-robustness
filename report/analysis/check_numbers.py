@@ -88,12 +88,18 @@ print(f"  {'ok ' if (g > 0).all() else 'FAIL'} positive in {(g > 0).sum()}/9 arm
 if not (g > 0).all():
     fails.append("9/9 arms positive")
 check("delete-50% gain quoted as 14.6", 100 * (0.8790 - b_wg), 14.6, tol=0.1)
+check("all-arm mean gain quoted as 13.9", 100 * g.mean(), 13.9, tol=0.1)
 
 print("\nTable 3, retention by usability regime")
 ret = pd.concat([pd.read_csv(f) for f in sorted(glob.glob(str(R / "retention_spur*_seed*.csv")))])
 live = ret[ret.retention.notna() & ~ret.collapsed]
 check("non-collapsed configurations", len(live), 195, tol=0)
-for lo, hi, n, mean_r, share in ((0.40, 1.01, 114, 1.30, 96),
+zero = live[live.param_value == 0]
+check("uncompressed rows inside that 195", len(zero), 27, tol=0)
+assert (zero.retention == 1.0).all(), "R(0) must be exactly 1 by construction"
+live = live[live.param_value != 0]
+check("compressed non-collapsed configurations", len(live), 168, tol=0)
+for lo, hi, n, mean_r, share in ((0.40, 1.01, 87, 1.39, 95),
                                  (0.25, 0.40, 14, 1.30, 86),
                                  (-0.01, 0.25, 67, -0.20, 13)):
     s = live[(live.acc_wg_pruned >= lo) & (live.acc_wg_pruned < hi)]
@@ -174,7 +180,16 @@ for name, half, share in (("R<0", dd[dd.retention < 0], 35),
 
 print("\nSection 4.2, what the deletion rule actually removes")
 import json
-man = json.loads((R / "prune_indices" / "manifest_spurious_seed0.json").read_text())
+manifest = R / "prune_indices" / "manifest_spurious_seed0.json"
+if not manifest.exists():
+    print("  -- skipped: results/prune_indices/ is gitignored; run run_phase2.sh")
+    print()
+    if fails:
+        print(f"{len(fails)} MISMATCH(ES): " + "; ".join(fails))
+        sys.exit(1)
+    print("every number checked reproduces from results/ (deletion checks skipped)")
+    sys.exit(0)
+man = json.loads(manifest.read_text())
 by_tag = {e["tag"]: e for e in man}
 for tag, achieved, keep in (("spur25", 64.6, 1698),
                             ("spur50", 75.6, 1170),

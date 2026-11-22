@@ -33,6 +33,11 @@
 \captionsetup[table]{skip=4pt}
 \bibliographystyle{plainnat}
 
+% Figure 1 costs a seventh page. The course limit is on body text excluding
+% figures, so it does not affect compliance -- flip to \showfigtrue to print it.
+\newif\ifshowfig
+\showfigfalse
+
 \title{\vspace{-2.5em}Does Model Compression Undo Robustness?\\
 \large Group robustness of compressed vision transformers,\\
 and whether data pruning survives deployment}
@@ -47,18 +52,18 @@ State University}
 
 \begin{abstract}
 \noindent
-A deployed model is usually made accurate, then made robust, then made small.
-The last step is evaluated on average accuracy, and that hides almost all of
-the damage it does. Pruning 30\% of a Waterbirds-tuned ViT-S/16's transformer
+Deployed models are compressed after training, and the compressed model is
+normally judged on average accuracy alone. We show that this hides most of
+the group-level damage compression causes. Pruning 30\% of a Waterbirds-tuned ViT-S/16's transformer
 weights costs 0.5 points of adjusted average accuracy and 14.9 points of
 worst-group accuracy, a ratio of 29 to one. We then ask whether an
 intervention that repairs group robustness survives the same treatment.
 Reproducing the identifiable-setting rule of \citet{mulchandani2025severing}
-on a backbone and schedule different from theirs recovers 14.6 points,
-positive in all nine arms. Measuring what remains with a retention ratio $R$,
-we find the answer splits not by compression family but by whether
-compression left a working model: $R \geq 0.75$ in 96\% of the 114 settings
-where the compressed model stays usable. Decomposing $R$ by group shows that
+on a backbone and schedule different from theirs recovers 13.9 points on
+average and 14.6 at its best budget, positive in all nine arms. Measuring what remains with a retention ratio $R$,
+we find that what matters is whether compression left a working model; the
+compression family matters far less. $R \geq 0.75$ in 95\% of the 87 compressed
+settings where the model stays usable. Decomposing $R$ by group shows that
 where it turns negative the repair is still worth 21.9 points to the group it
 targets, and worst-group accuracy has stopped pointing at that group.
 \end{abstract}
@@ -121,9 +126,9 @@ post-training quantization, where \citet{krishnamoorthi2018quantizing} showed
 per-channel scales recover most of what per-tensor scales lose.
 \citet{hooker2019forget} found that pruned CNNs concentrate new errors on
 atypical examples, and \citet{hooker2020bias} tied that to demographic
-subgroups on CelebA. Our question differs twice over: the backbone is a
-transformer, and the quantity we track is not pre-existing bias but a repair
-deliberately installed and possibly removed again.
+subgroups on CelebA. Our question differs from theirs in two ways: we work on a transformer, and
+the quantity we track comes from a repair we installed beforehand and may
+have removed again.
 
 \section{Background and problem description}
 
@@ -191,8 +196,8 @@ early epoch:
 d_i = \bigl\lVert p(w_e, x_i) - \mathrm{onehot}(y_i) \bigr\rVert_2 ,
 \]
 which for two classes equals $\sqrt{2}\,(1 - p_{\text{true}})$. We score
-after the second pass, on an un-augmented cache, so difficulty is a property
-of the sample and the weights rather than of whichever crop was drawn.
+after the second pass, on an un-augmented cache, so a sample gets the same
+score whichever random crop it would have been given.
 
 Waterbirds is the identifiable setting of \citet{mulchandani2025severing},
 where the published rule uses group labels: deletion candidates come only
@@ -224,10 +229,9 @@ two differences, $R$ is not confined to $[0,1]$: above one the gap widened
 under compression, which happens often, and below zero the repaired model
 scored under the plain one.
 
-Two cases are refused rather than reported. When $D(0)$ falls below a
-threshold the repair bought nothing, so $R$ is left undefined and the null
-result reported as such rather than as a ratio manufactured by dividing by
-noise. Settings where either model collapsed to one output are excluded,
+We refuse to report $R$ in two cases. When $D(0)$ falls below a threshold the
+repair bought nothing, so dividing by it would manufacture a ratio out of
+noise; we leave $R$ undefined and report the null result. Settings where either model collapsed to one output are excluded,
 detected by the mean predicted class falling outside $[0.05, 0.95]$. All
 nine of our dense gains clear the threshold, between 8.4 and 18.5 points.
 
@@ -246,9 +250,21 @@ assertions.
 \subsection{Compression damage is group-asymmetric}
 \label{sec:phase1}
 
+\ifshowfig
+\begin{figure}[t]
+\centering
+\includegraphics[width=0.78\textwidth]{figures/fig1_damage.png}
+\caption{Average accuracy hides the damage: magnitude pruning, mean of 3
+seeds. The two curves meet near the floor only because the model has
+collapsed to one class.}
+\label{fig:damage}
+\end{figure}
+\fi
+
 Table~\ref{tab:phase1} gives the plain model. The dense checkpoint reaches
 98.3\% adjusted average and 73.3\% worst group, a gap of 25 points that the
-shortcut explains and that compression widens in every family.
+shortcut explains and that compression widens in every family\ifshowfig{}
+(Figure~\ref{fig:damage})\fi.
 
 \begin{table}[t]
 \centering
@@ -258,20 +274,20 @@ seeds; deltas are against the uncompressed row.}
 \label{tab:phase1}
 \begin{tabular}{@{}lrrr@{}}
 \toprule
-Configuration & Targeted sparsity & Adjusted avg & Worst group \\
+Configuration & Achieved sparsity & Adjusted avg & Worst group \\
 \midrule
 uncompressed                & 0.000 & 98.3           & 73.3 \\
 quantize 8-bit, per-channel & 0.014 & 98.3 ($+0.0$)  & 72.9 ($-0.4$) \\
 quantize 6-bit, per-channel & 0.055 & 98.3 ($-0.1$)  & 74.2 ($+0.9$) \\
 magnitude, 30\%             & 0.300 & 97.8 ($-0.5$)  & 58.4 ($\mathbf{-14.9}$) \\
-remove 6 of 72 heads        & 0.028 & 96.6 ($-1.7$)  & 55.1 ($\mathbf{-18.2}$) \\
 quantize 4-bit, per-channel & 0.232 & 96.7 ($-1.6$)  & 66.7 ($-6.7$) \\
+remove 6 of 72 heads        & 0.028 & 96.6 ($-1.7$)  & 55.1 ($\mathbf{-18.2}$) \\
 FFN, 30\% of neurons        & 0.200 & 81.3 ($-17.1$) & 22.6 ($-50.7$) \\
 \bottomrule
 \end{tabular}
 \end{table}
 
-The magnitude row is the one to read twice. Half a point of adjusted average
+The magnitude row shows the effect most sharply. Half a point of adjusted average
 against 14.9 points of worst group is a ratio of 29 to one, and a deployment
 review asking only whether top-line accuracy moved would have approved this
 model. Structured removal is worse per parameter touched: 6 attention heads
@@ -286,9 +302,10 @@ measure.
 \subsection{The repair reproduces}
 
 Table~\ref{tab:phase2} compares our dense repaired models against the
-published result. Worst-group accuracy rises from 73.3\% to 87.9\% at the
-50\% budget, a gain of 14.6 points, positive in all nine arms with a standard
-deviation of 3.1 and flat across budgets from 25\% to 75\%, which is the
+published result. Across all nine arms the gain over ERM averages 13.9 points
+with a standard deviation of 3.1 and is positive in every one; at the 50\%
+budget worst-group accuracy rises from 73.3\% to 87.9\%, a gain of 14.6
+points. The gain is flat across budgets from 25\% to 75\%, which is the
 claim of the paper's Figure 8.
 
 \begin{table}[t]
@@ -316,28 +333,30 @@ We land 3 points under the published 90.93, and the shortfall traces to the
 difficulty ranking rather than the deletion rule. Our backbone is pretrained
 and reaches 97.9\% training accuracy after two passes, so by scoring time the
 ranking has flattened; the published setup trains from scratch for 100
-epochs, where it still separates samples. Two thirds of what we delete is
-material the model already classifies above 99.3\% confidence, so our
+epochs, where it still separates samples. 63\% of what we delete is material
+the model already classifies above 99.3\% confidence, so our
 reproduction is closer to shrink-and-balance than the authors' is and these
 numbers are a lower bound.
 
-\subsection{Retention splits by usability, not by family}
+\subsection{What predicts retention}
 
 We expected $R$ to differ by compression family, since Phase 1 showed the
-families are not interchangeable. It does not. What predicts $R$ is whether
-compression left a working model at all (Table~\ref{tab:retention}).
+families are not interchangeable. It turned out to depend on something else
+entirely: whether compression left a working model at all
+(Table~\ref{tab:retention}).
 
 \begin{table}[t]
 \centering
 \small
-\caption{Retention across all 195 non-collapsed configurations, bucketed by
-the compressed model's own worst-group accuracy.}
+\caption{Retention across the 168 compressed non-collapsed configurations,
+bucketed by the compressed model's own worst-group accuracy. The 27
+uncompressed rows are excluded: $R(0) = 1$ by construction.}
 \label{tab:retention}
 \begin{tabular}{@{}lrrr@{}}
 \toprule
 Regime & $n$ & mean $R$ & $R \geq 0.75$ \\
 \midrule
-compressed worst group $\geq 0.40$ (usable) & 114 & $+1.30$ & 96\% \\
+compressed worst group $\geq 0.40$ (usable) & 87  & $+1.39$ & 95\% \\
 $0.25$ to $0.40$ (degraded)                 & 14  & $+1.30$ & 86\% \\
 below $0.25$ (broken)                       & 67  & $-0.20$ & 13\% \\
 \bottomrule
@@ -363,8 +382,9 @@ long after worst-group accuracy stops reporting it.
 \centering
 \small
 \caption{Per-group gain of the repaired model over the plain one, magnitude
-pruning on the delete 50\% arm, mean of 3 seeds, in points. At 70\% the
-worst-group column reads zero while g2 is still 21 points ahead.}
+pruning on the delete 50\% arm, mean of 3 seeds, in points. The last column
+gives the binding group of the plain model $\rightarrow$ that of the repaired
+one. At 70\% the worst-group column reads $-0.4$ while g2 is 21 points ahead.}
 \label{tab:pergroup}
 \begin{tabular}{@{}lrrrrrc@{}}
 \toprule
@@ -407,7 +427,7 @@ schedule and then survives compression: wherever the compressed model remains
 usable, 96\% of settings keep at least three quarters of the dense gain, and
 the gain often widens because the unrepaired model degrades faster.
 
-Four limits bound this. The study is one dataset and one architecture, and
+We see four limits on this. The study covers one dataset and one architecture, and
 Waterbirds has a clean synthetic shortcut that natural distribution shift
 does not. Our reproduction is weakened by a pretrained backbone whose
 difficulty ranking flattens after two epochs, so the published method is
