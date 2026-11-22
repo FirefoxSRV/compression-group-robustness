@@ -103,9 +103,9 @@ explaining why $R$ goes negative.
 \section{Related work}
 
 \textbf{Group robustness.} \citet{sagawa2020distributionally} introduced
-Waterbirds and the worst-group accuracy convention we use, and
-\citet{koh2021wilds} collected it into WILDS with the adjusted-average
-convention. Both assume the model is evaluated at the size it was trained.
+Waterbirds and the worst-group convention, and \citet{koh2021wilds}
+collected it into WILDS with the adjusted average. Both assume the model is
+evaluated at the size it was trained.
 
 \textbf{Severing spurious correlations by pruning data.}
 \citet{mulchandani2025severing} argue that a spurious correlation is learned
@@ -115,18 +115,39 @@ their identifiable setting, the rule uses group labels and draws deletion
 candidates only from the spurious-aligned group of each class. We reproduce
 that rule and treat the resulting model as the thing to compress.
 
-\textbf{Compression, and what it costs whom.} Our four families are
-individually well characterized: magnitude pruning \citep{han2015learning},
-attention-head removal \citep{michel2019sixteen}, FFN neuron removal, and
-post-training quantization, where \citet{krishnamoorthi2018quantizing} showed
-per-channel scales recover most of what per-tensor scales lose.
-\citet{hooker2019forget} found that pruned CNNs concentrate new errors on
+\textbf{Compression, and what it costs whom.} Each of our four families is
+individually well characterized, and \citet{krishnamoorthi2018quantizing} in
+particular showed that per-channel scales recover most of what per-tensor
+scales lose. \citet{hooker2019forget} found that pruned CNNs concentrate new errors on
 atypical examples, and \citet{hooker2020bias} tied that to demographic
 subgroups on CelebA. Our question differs from theirs in two ways: we work on a transformer, and
 the quantity we track comes from a repair we installed beforehand and may
 have removed again.
 
 \section{Background and problem description}
+
+\textbf{Shortcut learning.} A spurious correlation is a feature that predicts
+the label during training without being part of what the label means. A
+classifier that leans on one scores well on a test average and fails on the
+examples where the feature points the wrong way, so the average conceals the
+failure. The standard remedy is to partition the data by label and spurious
+feature and report the minimum accuracy over those groups, which is the
+worst-group accuracy of \citet{sagawa2020distributionally}.
+
+\textbf{The architecture, and what compression does to it.} ViT-S/16
+\citep{dosovitskiy2021image} cuts a $224 \times 224$ image into $16 \times 16$
+patches and passes them through 12 transformer blocks. Each block holds
+multi-head self-attention, here 6 heads of width 64 across a 384-channel
+embedding, and a two-layer MLP that widens 384 channels to 1536 and back.
+That gives 72 attention heads in total, and our compression touches only the
+weights inside those blocks. Magnitude pruning \citep{han2015learning} sets
+the smallest weights to zero and leaves every tensor shape intact. Structured
+pruning instead deletes whole units, an attention head
+\citep{michel2019sixteen} or an MLP neuron, which changes what the layer
+computes rather than how sparse it is. Quantization
+\citep{krishnamoorthi2018quantizing} keeps every weight and stores it at
+lower precision, where the granularity of the scale matters as much as the
+bit width.
 
 \textbf{Data and metric.} Waterbirds pastes cropped birds onto Places
 backgrounds. We read the official splits from \texttt{metadata.csv}: 4795
@@ -361,9 +382,7 @@ Inside the usable regime $R$ ranges from $+0.29$ to $+3.58$ across all four
 families, and negative values never appear above a compressed worst-group
 accuracy of 0.269. A mean $R$ above one says the gap usually widens: at 50\%
 magnitude sparsity the plain model loses 49.6 points of worst-group accuracy
-while the repaired model loses 34.9, so $D$ doubles and $R$ reaches 2.04. A
-family mean of $+1.26$ for magnitude pools that $+2.04$ with a $-0.15$ at
-70\% and describes neither.
+while the repaired model loses 34.9, so $D$ doubles and $R$ reaches 2.04.
 
 \subsection{Why $R$ goes negative}
 

@@ -60,11 +60,16 @@ def main() -> None:
         print(f"\nBODY text only: {frac:.2f} pages "
               f"({m - 1} full + {last} words), {total_words} words total")
 
-    ok_total = n <= 7   # two figures; the course limit is on body text only
-    ok_body = frac <= 4.5
-    print(f"\n  total <= 7 pages : {'PASS' if ok_total else f'FAIL ({n})'}")
-    print(f"  body  <= 4.5 pages: {'PASS' if ok_body else f'FAIL ({frac:.2f})'}")
-    sys.exit(0 if (ok_total and ok_body) else 1)
+    # The course rule caps the written content at 5 one-column pages and
+    # excludes figures, tables and references, so the body measure above is
+    # the one that has to pass. Total page count is reported, not bounded.
+    ok_body = frac <= 5.0
+    margin = int(round((5.0 - frac) * WORDS_PER_FULL_PAGE))
+    print(f"\n  body <= 5 pages (the rule): "
+          f"{'PASS' if ok_body else f'FAIL ({frac:.2f})'} "
+          f"-- {frac:.2f} pages, {margin} words of margin")
+    print(f"  total document: {n} pages (figures and tables excluded from the rule)")
+    sys.exit(0 if ok_body else 1)
 
 
 if __name__ == "__main__":
