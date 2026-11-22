@@ -51,9 +51,8 @@ intervention that repairs group robustness survives the same treatment.
 Reproducing the identifiable-setting rule of \citet{mulchandani2025severing}
 on a backbone and schedule different from theirs recovers 13.9 points on
 average and 14.6 at its best budget, positive in all nine arms. Measuring what remains with a retention ratio $R$,
-we find that what matters is whether compression left a working model; the
-compression family matters far less. $R \geq 0.75$ in 95\% of the 87 compressed
-settings where the model stays usable. Decomposing $R$ by group shows that
+we find that what matters is whether compression left a working model; the compression family matters far less. In 95\% of the 87 compressed settings
+where the model stays usable, $R \geq 0.75$. Decomposing $R$ by group shows that
 where it turns negative the repair is still worth 21.9 points to the group it
 targets, and worst-group accuracy has stopped pointing at that group.
 \end{abstract}
@@ -112,9 +111,9 @@ references given in Section~\ref{sec:background};
 \citet{krishnamoorthi2018quantizing} showed that per-channel scales recover
 most of what per-tensor scales lose. \citet{hooker2019forget} found that pruned CNNs concentrate new errors on
 atypical examples, and \citet{hooker2020bias} tied that to demographic
-subgroups on CelebA. Our question differs from theirs in two ways: we work on a transformer, and
-the quantity we track comes from a repair we installed beforehand and may
-have removed again.
+subgroups on CelebA. Our question differs from theirs in two ways: we work on a transformer, and we
+track whether a robustness repair survives compression, rather than
+pre-existing bias.
 
 \section{Background and problem description} \label{sec:background}
 
@@ -140,9 +139,8 @@ matrix or set per output row.
 
 \textbf{Data and metric.} Waterbirds pastes cropped birds onto Places
 \citep{zhou2018places} backgrounds. We read the official splits from \texttt{metadata.csv}: 4795
-training images, 1199 validation, 5794 test. A group is $g = 2y + b$ for label $y$ and background $b$, giving landbird-on-
-land (3498 training images), landbird-on-water (184), waterbird-on-land (56)
-and waterbird-on-water (1057), written g0 to g3. The two middle groups contradict the shortcut, and
+training images, 1199 validation, 5794 test. A group is $g = 2y + b$ for label $y$ and background $b$, giving landbird-on-land (3498 training images), landbird-on-water (184),
+waterbird-on-land (56) and waterbird-on-water (1057), written g0 to g3. The two middle groups contradict the shortcut, and
 waterbird-on-land, with 56 training examples, is the worst group in almost
 every measurement below. Because the test split is far more group-balanced
 than the training split, a plain test-set mean is not comparable to published
@@ -257,8 +255,8 @@ checks.
 \centering
 \includegraphics[width=0.66\textwidth]{figures/fig1_damage.png}
 \caption{Average accuracy hides the damage: magnitude pruning, mean of 3
-seeds. The gap opens from 30\% onward. Past 80\% the model has collapsed to
-a single class, so neither curve reports anything meaningful.}
+seeds. The gap opens from 30\% onward. Past 80\% individual seeds begin collapsing to
+a single class, so neither curve is meaningful there.}
 \label{fig:damage}
 \end{figure}
 
@@ -296,8 +294,8 @@ matters more than the bit width, with per-channel 4-bit keeping 66.7\% against
 per-tensor 4-bit's 8.0\%.
 
 Past roughly 80\% sparsity the gap narrows again. This happens because the
-model has collapsed to a single class, leaving no disparity to measure, and
-not because robustness has improved.
+models begin collapsing to a single class, which leaves no disparity to
+measure, and not because robustness has improved.
 
 \subsection{The repair reproduces}
 
@@ -364,11 +362,11 @@ below $0.25$ (broken)                       & 67  & $-0.20$ & 13\% \\
 \end{tabular}
 \end{table}
 
-The cutoffs sit either side of the collapse region, and the pattern is the
-same at nearby values. Inside the usable regime $R$ ranges from $+0.29$ to
-$+3.58$ across all four
-families, and negative values never appear above a compressed worst-group
-accuracy of 0.269. A mean $R$ above one says the gap usually widens: at 50\%
+We bucket by the compressed model's worst-group accuracy at 0.40 and 0.25;
+moving either cutoff by 0.05 leaves the usable and broken buckets essentially
+unchanged. Inside the usable regime $R$ ranges from $+0.29$ to $+3.58$ across
+all four families, and negative values never appear above a compressed
+worst-group accuracy of 0.269. A mean $R$ above one says the gap usually widens: at 50\%
 magnitude sparsity the plain model loses 49.6 points of worst-group accuracy
 while the repaired model loses 34.9, so $D$ doubles and $R$ reaches 2.04.
 
@@ -403,8 +401,7 @@ Sparsity & g0 & g1 & \textbf{g2} & g3 & worst group & binding group \\
 \includegraphics[width=0.56\textwidth]{figures/fig4_per_group_retention.png}
 \caption{Where worst-group accuracy stops tracking the repair. Gain of the
 repaired model over the plain one, magnitude pruning on the delete 50\% arm,
-mean of 3 seeds. The curves coincide up to 30\% and separate from 50\% on; at 70\% the worst-
-group gain has fallen to $-0.4$ while waterbird-on-land is 21 points ahead,
+mean of 3 seeds. The curves coincide up to 30\% and separate from 50\% on; at 70\% the worst-group gain has fallen to $-0.4$ while waterbird-on-land is 21 points ahead,
 because the binding group has moved to the majority group.}
 \label{fig:pergroup}
 \end{figure}

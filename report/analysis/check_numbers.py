@@ -90,6 +90,15 @@ if not (g > 0).all():
 check("delete-50% gain quoted as 14.6", 100 * (0.8790 - b_wg), 14.6, tol=0.1)
 check("all-arm mean gain quoted as 13.9", 100 * g.mean(), 13.9, tol=0.1)
 
+print("\nSection 5.1, the collapse claim")
+# The report says seeds *begin* collapsing past 80%, not that the model has
+# collapsed: at 80% and 90% only one of three seeds does.
+mag = erm[erm.method == "magnitude"]
+for sp, want in ((0.7, 0), (0.8, 1), (0.9, 1), (0.95, 2)):
+    row = mag[mag.param_value == sp]
+    got = int(((row.pred_mean < 0.05) | (row.pred_mean > 0.95)).sum())
+    check(f"seeds collapsed at {int(sp * 100)}% sparsity", got, want, tol=0)
+
 print("\nTable 3, retention by usability regime")
 ret = pd.concat([pd.read_csv(f) for f in sorted(glob.glob(str(R / "retention_spur*_seed*.csv")))])
 live = ret[ret.retention.notna() & ~ret.collapsed]
