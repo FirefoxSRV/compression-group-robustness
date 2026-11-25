@@ -42,211 +42,190 @@ State University}
 
 \begin{abstract}
 \noindent
-Deployed models are compressed after training, and the compressed model is
-normally judged on average accuracy alone. We show that this hides most of
-the group-level damage compression causes. Pruning 30\% of a Waterbirds-tuned ViT-S/16's transformer
-weights costs 0.5 points of adjusted average accuracy and 14.9 points of
-worst-group accuracy, a ratio of 29 to one. We then ask whether an
-intervention that repairs group robustness survives the same treatment.
-Reproducing the identifiable-setting rule of \citet{mulchandani2025severing}
-on a backbone and schedule different from theirs recovers 13.9 points on
-average and 14.6 at its best budget, positive in all nine arms. Measuring what remains with a retention ratio $R$,
-we find that what matters is whether compression left a working model; the compression family matters far less. In 95\% of the 87 compressed settings
-where the model stays usable, $R \geq 0.75$. Decomposing $R$ by group shows that
-where it turns negative the repair is still worth 21.9 points to the group it
-targets, and worst-group accuracy has stopped pointing at that group.
+We fine-tuned a ViT-S/16 on Waterbirds, compressed it four ways, and looked at
+what each compression setting did to the four groups separately. Pruning 30\%
+of the transformer weights costs 0.5 points of adjusted average accuracy and
+14.9 points on the worst group, a ratio of 29 to one, so a reviewer watching
+only the average would have signed this model off. We then repaired the model
+with the data pruning of \citet{mulchandani2025severing} and ran the identical
+sweep on the repaired checkpoint. The repair gives back 13.9 points on average
+across nine arms and 14.6 at its best budget. It also survives compression:
+measuring what is left with a retention ratio $R$, we find $R \geq 0.75$ in
+95\% of the 87 compressed settings where the model still works at all, and
+almost nothing that distinguishes one compression family from another. Where
+$R$ goes negative the repair has usually not been destroyed. It is still worth
+21.9 points to the group it was aimed at, and worst-group accuracy has quietly
+moved to a different group.
 \end{abstract}
 
 \section{Introduction}
 
-Models are usually compressed just before deployment, and this step tends to
-be evaluated less carefully than training. The usual report is top-1 accuracy before and after, an average that cannot
-show a small subgroup has been abandoned. The problem is worse once an
-intervention has been applied. A practitioner who finds that a classifier relies on a spurious background
-feature and fixes it has improved accuracy only on rare groups, so if
-compression undoes the fix the average will not report it.
+A model that has been made robust is usually made small afterwards, and the
+second step is checked less carefully than the first. The usual check is top-1
+accuracy before and after. An average cannot show that one small group has
+been abandoned, and it is exactly a small group that a robustness fix buys.
+If compression takes the fix back, the average stays quiet.
 
-We work on Waterbirds \citep{sagawa2020distributionally}, where the
-background predicts the label for 95\% of the training set, and on a
-ViT-S/16 \citep{dosovitskiy2021image}. Phase 1 fine-tunes without group-aware machinery, compresses the checkpoint
-four ways, and measures per-group accuracy at every setting. Phase 2 repairs the model first, using the data pruning of
-\citet{mulchandani2025severing}, then runs the identical sweep and asks how
-much repair is left. This report
-contributes the following.
+We work on Waterbirds \citep{sagawa2020distributionally}, where the background
+predicts the label for 95\% of the training set, and on a ViT-S/16
+\citep{dosovitskiy2021image}. Phase 1 fine-tunes with no group-aware
+machinery, compresses that checkpoint four ways and records per-group accuracy
+at all 29 settings. Phase 2 repairs the model first, then runs the same sweep.
 
-\begin{enumerate}[leftmargin=1.4em,itemsep=0.15em,topsep=0.2em]
-\item A controlled measurement of group-asymmetric compression damage on a
-vision transformer: at 30\% sparsity the worst group falls 29 times faster
-than the adjusted average, so an average-only evaluation would record this
-compression as free.
-\item A reproduction of the identifiable-setting rule of
-\citet{mulchandani2025severing} on a different architecture (ViT-S/16, not
-ResNet-50), a tenth of the schedule, and group-blind model selection,
-recovering 14.6 of their 16.1 points.
-\item A retention ratio $R(s)$ that we use to ask whether a robustness
-intervention survives deployment compression, with the two cases in which we
-decline to report it.
-\item Evidence that retention depends on whether the compressed model still
-works rather than on the compression family, with a per-group decomposition
-explaining why $R$ goes negative.
-\end{enumerate}
+Four things come out of this. Compression damage is group-asymmetric on a
+transformer, and at 30\% sparsity the worst group falls 29 times faster than
+the adjusted average. The identifiable-setting rule of
+\citet{mulchandani2025severing} reproduces on a different backbone at a tenth
+of the schedule and with group-blind selection, recovering 14.6 of their 16.1
+points. The retention ratio we use comes with two cases where we refuse to
+report it rather than print a number we do not believe. And retention depends
+on whether the compressed model still works, not on how it was compressed,
+which is not what we expected.
 
 \section{Related work}
 
-\textbf{Group robustness.} \citet{sagawa2020distributionally} introduced
-Waterbirds and the worst-group convention, and \citet{koh2021wilds}
-collected it into WILDS with the adjusted average. Both assume the model is
-evaluated at the size it was trained.
+\citet{sagawa2020distributionally} introduced Waterbirds and the worst-group
+convention, and \citet{koh2021wilds} folded it into WILDS with the adjusted
+average. Both evaluate the model at the size it was trained.
 
-\textbf{Severing spurious correlations by pruning data.}
 \citet{mulchandani2025severing} argue that a spurious correlation is learned
 because of a few training samples whose core feature is hard, so deleting
-those samples removes the incentive to take the shortcut. On Waterbirds,
-their identifiable setting, the rule uses group labels and draws deletion
-candidates only from the spurious-aligned group of each class. We reproduce
-that rule and treat the resulting model as the thing to compress.
+those samples removes the incentive to take the shortcut. On Waterbirds, which
+they call an identifiable setting, the rule uses group labels and draws
+deletion candidates only from the spurious-aligned group of each class. We
+reproduce that rule and treat the result as the thing to compress.
 
-\textbf{Compression and fairness.} Each of our four families is individually well characterized, with the primary
-references given in Section~\ref{sec:background};
-\citet{krishnamoorthi2018quantizing} showed that per-channel scales recover
-most of what per-tensor scales lose. \citet{hooker2019forget} found that pruned CNNs concentrate new errors on
-atypical examples, and \citet{hooker2020bias} tied that to demographic
-subgroups on CelebA. Our question differs from theirs in two ways: we work on a transformer, and we
-track whether a robustness repair survives compression, rather than
-pre-existing bias.
+Our four compression families are each well studied on their own, with the
+references in Section~\ref{sec:background}. \citet{hooker2019forget} found
+that pruned CNNs concentrate their new errors on atypical examples, and
+\citet{hooker2020bias} tied that to demographic subgroups on CelebA. We differ
+from them on two counts: the backbone is a transformer, and the disparity we
+watch was installed by us a few hours earlier rather than inherited from the
+data.
 
 \section{Background and problem description} \label{sec:background}
 
-\textbf{Shortcut learning.} A spurious correlation is a feature that predicts
-the label during training without being part of what the label means. A
-classifier that leans on one scores well on a test average and fails on the
-examples where the feature points the wrong way, so the average conceals the
-failure. The standard way to measure it is to partition the data by label and spurious
-feature and report the minimum accuracy over those groups, which is the
-worst-group accuracy of \citet{sagawa2020distributionally}.
+ViT-S/16 \citep{dosovitskiy2021image} cuts a $224 \times 224$ image into
+$16 \times 16$ patches and runs them through 12 blocks. Each block has 6
+attention heads of width 64 over a 384-channel embedding and an MLP that
+widens 384 to 1536 and back, so there are 72 heads to prune from. Magnitude pruning \citep{han2015learning} zeroes the smallest weights and
+leaves tensor shapes alone. Head and neuron removal \citep{michel2019sixteen}
+deletes whole units, so the zeros arrive in blocks. Quantization
+\citep{krishnamoorthi2018quantizing} keeps every weight at lower precision,
+the scale set per matrix or per output row;
+\citet{krishnamoorthi2018quantizing} showed how much the finer scale recovers.
 
-\textbf{The architecture, and what compression does to it.} ViT-S/16
-\citep{dosovitskiy2021image} cuts a $224 \times 224$ image into $16 \times 16$
-patches and passes them through 12 transformer blocks. Each block holds
-multi-head self-attention, here 6 heads of width 64 across a 384-channel
-embedding, and a two-layer MLP that widens 384 channels to 1536 and back.
-That gives 72 attention heads in total, and our compression touches only the
-weights inside those blocks. Magnitude pruning \citep{han2015learning} sets
-the smallest weights to zero and leaves every tensor shape intact. Structured pruning instead deletes whole units, an attention head
-\citep{michel2019sixteen} or an MLP neuron, so its zeros arrive in blocks rather than scattered. Quantization \citep{krishnamoorthi2018quantizing} keeps every weight and
-stores it at lower precision, with the scale either shared across a whole
-matrix or set per output row.
+Waterbirds pastes cropped birds onto Places \citep{zhou2018places}
+backgrounds. We read the official splits from \texttt{metadata.csv}: 4795
+training images, 1199 validation and 5794 test. A group is $g = 2y + b$ for
+label $y$ and background $b$, giving landbird-on-land (3498 training images),
+landbird-on-water (184), waterbird-on-land (56) and waterbird-on-water (1057),
+written g0 to g3. The two middle groups contradict the shortcut, and g2, with
+56 training images, is the worst group almost everywhere below. The test split
+is far more group-balanced than the training split, so a plain test mean is
+not comparable to published Waterbirds numbers. We follow WILDS and report the
+adjusted average, which reweights per-group accuracy by training frequency.
 
-\textbf{Data and metric.} Waterbirds pastes cropped birds onto Places
-\citep{zhou2018places} backgrounds. We read the official splits from \texttt{metadata.csv}: 4795
-training images, 1199 validation, 5794 test. A group is $g = 2y + b$ for label $y$ and background $b$, giving landbird-on-land (3498 training images), landbird-on-water (184),
-waterbird-on-land (56) and waterbird-on-water (1057), written g0 to g3. The two middle groups contradict the shortcut, and
-waterbird-on-land, with 56 training examples, is the worst group in almost
-every measurement below. Because the test split is far more group-balanced
-than the training split, a plain test-set mean is not comparable to published
-numbers; we follow WILDS and report the adjusted average, which reweights
-per-group accuracy by training frequency.
+Three choices decide what we are measuring. Training is group-blind, with no
+reweighting, no balanced sampler and no robust objective, because a model that
+never learned the shortcut leaves nothing for compression to damage. Selection is on plain validation accuracy. The config key is still named
+\texttt{select\_on: val\_acc\_avg}, which is misleading: the code reads
+\texttt{acc\_avg\_plain}, and selecting on the worst group would be a
+group-aware intervention in a run meant to have none. Nothing is
+retrained after compression, which would let the network refit the shortcut.
 
-\textbf{Three choices that decide what is being measured.} Training is
-deliberately group-blind: no reweighting, no balanced sampler, no robust
-objective. The model is supposed to learn the shortcut, because one that
-never learned it leaves nothing for compression to damage. Model selection is on plain validation accuracy, since selecting on the worst
-group is itself a group-aware intervention. And nothing is retrained after compression, since retraining would let the
-network refit the shortcut and would measure something different.
-
-\textbf{The question.} With $W(s)$ the worst-group accuracy and $A(s)$ the
-adjusted average at compression setting $s$, Phase 1 asks whether $W$ falls
-faster than $A$, and Phase 2 trains a second model whose $W$ starts higher
-and asks how much of that head start is left at each $s$.
+With $W(s)$ the worst-group accuracy and $A(s)$ the adjusted average at
+setting $s$, Phase 1 asks whether $W$ falls faster than $A$. Phase 2 trains a
+model whose $W$ starts higher and asks how much of the head start is left.
 
 \section{Method}
 
 \subsection{A frozen compression scope}
 
-Four compression families are only comparable if they may touch the same
-parameters. We fix the scope once: the in-block linear weights
+Four families are only comparable if they may touch the same parameters, so we
+fixed the scope once and never moved it: the in-block linear weights
 \texttt{attn.qkv}, \texttt{attn.proj}, \texttt{mlp.fc1} and \texttt{mlp.fc2},
 48 tensors holding 21{,}233{,}664 parameters. Patch embedding, positional
-embedding, the class token, every LayerNorm, every bias and the head are
-excluded. Achieved sparsity therefore means the same thing in all four
-families, which is what makes Table~\ref{tab:phase1} a fair comparison.
+embedding, the class token, every LayerNorm, every bias and the classifier head
+are all excluded. Achieved sparsity therefore means the same thing in every row
+of Table~\ref{tab:phase1}.
 
-Every method returns a new model and never mutates its input. This matters
-because compressing an already compressed model would produce believable but
-wrong curves, so the sweep re-verifies a fingerprint of the source checkpoint
-before each configuration.
-
-\textbf{Magnitude} pruning zeroes the globally smallest $|w|$. At 21.2M
-weights the threshold is not unique, with ties one to three deep, so a
-$|w| > t$ mask overshoots; we zero strictly below it and spend an explicit
-tie budget in a fixed order, making the count exactly $k$. \textbf{Head} and
-\textbf{FFN} removal are structured: head $h$ owns 64 input columns of
+Magnitude pruning zeroes the globally smallest $|w|$. Our first implementation
+used a $|w| > t$ mask and quietly removed more weights than asked: at 21.2M
+fp32 values the threshold is genuinely not unique, with ties running one to
+three deep, so the mask overshoots. We now zero strictly below $t$ and spend an
+explicit tie budget in a fixed order, which makes the count exactly $k$. Head
+and FFN removal are structured. Head $h$ owns 64 input columns of
 \texttt{proj}, and neuron $i$ is row $i$ of \texttt{fc1} with column $i$ of
-\texttt{fc2}. We mask rather than narrow the tensors, so shapes stay
-ViT-S/16, and we prove masking equals deletion against a reference built by
-zeroing only the output-side tensor. Heads are ranked by weight norm with a
-floor of one per block, capping removal at 60 of 72. \textbf{Quantization}
-is simulated quantize-dequantize at 8, 6, 4 and 3 bits, with scales per
-tensor or per output channel.
+\texttt{fc2}. We mask rather than narrow the tensors so shapes stay ViT-S/16,
+and we check masking against a reference built by zeroing only the output-side
+tensor. Heads are ranked by weight norm with a floor of one per block, which
+caps removal at 60 of 72. Quantization is simulated quantize-dequantize at 8,
+6, 4 and 3 bits, with scales per tensor or per output channel.
+
+Every method returns a new model and never mutates its input, and the sweep
+re-checks a fingerprint of the source checkpoint before each configuration.
+That guard exists because compressing an already compressed model produces
+curves that look entirely reasonable and are wrong.
 
 \subsection{Repairing the model by deleting training data}
 
-Difficulty of training sample $i$ is read from a single ERM run at a fixed
-early epoch:
+Difficulty of training sample $i$ comes from a single ERM run at a fixed early
+epoch:
 \[
 d_i = \bigl\lVert p(w_e, x_i) - \mathrm{onehot}(y_i) \bigr\rVert_2 ,
 \]
-which for two classes equals $\sqrt{2}\,(1 - p_{\text{true}})$. We score
-after the second pass, on an un-augmented cache, so a sample gets the same
-score whichever random crop it would have been given.
+which for two classes is $\sqrt{2}\,(1 - p_{\text{true}})$. We score after the
+second pass on an un-augmented cache, so a sample gets the same score whichever
+random crop it would have drawn.
 
-Waterbirds is the identifiable setting of \citet{mulchandani2025severing},
-where the published rule uses group labels: deletion candidates come only
-from the spurious-aligned group of each class, and the classes are then
-equalized in size. We implemented the group-blind variant first and measured
-why the paper rules it out. At a 10\% budget it removed 48\% of
-landbird-on-water and 68\% of the 56-sample waterbird-on-land group, deleting
-the counter-shortcut examples that hold worst-group accuracy up.
+We implemented the group-blind variant first, before reading far enough into
+the paper to see why it rules that variant out on Waterbirds. At a 10\% budget
+it deleted 48\% of landbird-on-water and 68\% of the 56-image
+waterbird-on-land group, which is to say it removed the counter-shortcut
+examples that hold worst-group accuracy up. The published rule uses group
+labels, takes deletion candidates only from the spurious-aligned group of each
+class, then equalizes the classes.
 
-Class equalization makes the headline fraction understate the real deletion.
-Nominal sparsity is a pre-balancing fraction of each class's aligned pool,
-and equalizing 3682 landbirds against 1113 waterbirds consumes most of the
-budget: a nominal 25\% removes 64.6\% of the split, 50\% removes 75.6\%, and
-75\% removes 86.7\%. At the 50\% budget the training set goes from 4795
-images to 1170, and not one image is taken from either counter-shortcut
-group.
+That equalization makes the headline budget understate the real deletion, and
+this is the number most likely to be misread. Nominal sparsity is a
+pre-balancing fraction of each class's aligned pool, and equalizing 3682
+landbirds against 1113 waterbirds eats most of it. A nominal 25\% removes
+64.6\% of the split, 50\% removes 75.6\% and 75\% removes 86.7\%. At the 50\%
+budget the training set falls from 4795 images to 1170, and not one image
+comes out of either counter-shortcut group.
 
 \subsection{The retention ratio}
 
 Let $W_p(s)$ and $W_e(s)$ be worst-group accuracy of the repaired and plain
-models at the same compression setting. Define
+models at the same setting. Define
 \[
 D(s) = W_p(s) - W_e(s), \qquad R(s) = \frac{D(s)}{D(0)} .
 \]
-$D(0)$ is what the repair bought before compression and $D(s)$ what survives.
-$R \approx 1$ means the intervention is intact; $R \approx 0$ means
-compression undid it while average accuracy barely moved. Being a ratio of
-two differences, $R$ is not confined to $[0,1]$: above one the gap widened
-under compression, which happens often, and below zero the repaired model
-scored under the plain one.
+$D(0)$ is what the repair bought before compression and $D(s)$ what is left.
+$R \approx 1$ means the repair is intact and $R \approx 0$ means compression
+undid it. $R$ is a ratio of two differences and is not confined to $[0,1]$.
+Above one the gap widened under compression, which happens more often than we
+assumed it would, and below zero the repaired model scored under the plain one.
 
-We refuse to report $R$ in two cases. When $D(0)$ falls below a threshold the
-repair bought nothing, so dividing by it would produce a large and meaningless
-ratio; we leave $R$ undefined and report the null result. Settings where either model collapsed to one output are excluded,
-detected by the mean predicted class falling outside $[0.05, 0.95]$. All
-nine of our dense gains clear the threshold, between 8.4 and 18.5 points.
+We refuse to report $R$ twice. When $D(0)$ falls below a threshold the repair
+bought nothing, and dividing by it gives a large number built out of noise, so
+we leave $R$ undefined and say the result was null. Settings where either
+model collapsed to a single output are dropped, detected by the mean predicted
+class falling outside $[0.05, 0.95]$. All nine dense gains clear the
+threshold, between 8.4 and 18.5 points.
 
 \section{Experiments}
 
-\textbf{Setup.} Every number below is a mean over three seeds. We fine-tune
-timm's \texttt{vit\_small\_\-patch16\_\-224} \citep{wightman2019timm} from
-ImageNet weights for 10 epochs with AdamW, learning rate $10^{-5}$, weight
-decay $10^{-4}$, cosine decay without warmup and batch size 32. The sweep
-runs 29 configurations per arm and seed: seven magnitude sparsities and seven
-FFN neuron fractions from 0 to 0.95, seven head budgets from 0 to 60, and
-$\{8, 6, 4, 3\}$ bits at two granularities, giving 348 compressed
-evaluations in all. Correctness rests on 64 automated tests and 15 shell
-checks.
+Every number below is a mean over three seeds. We fine-tune timm's
+\texttt{vit\_small\_\-patch16\_\-224} \citep{wightman2019timm} from ImageNet
+weights for 10 epochs with AdamW, learning rate $10^{-5}$, weight decay
+$10^{-4}$, cosine decay with no warmup, batch size 32 and
+\texttt{num\_workers=0}, which reproduces bit for bit on this machine. The
+sweep runs 29 configurations per arm and seed: seven magnitude sparsities and
+seven FFN neuron fractions from 0 to 0.95, seven head budgets from 0 to 60,
+and $\{8, 6, 4, 3\}$ bits at two granularities. Four arms and three seeds give
+348 compressed evaluations, behind 64 automated tests and 15 shell checks.
 
 \subsection{Compression damage is group-asymmetric}
 \label{sec:phase1}
@@ -261,8 +240,8 @@ a single class, so neither curve is meaningful there.}
 \end{figure}
 
 Table~\ref{tab:phase1} gives the plain model. The dense checkpoint reaches
-98.3\% adjusted average and 73.3\% worst group, a gap of 25 points that the
-shortcut explains and that compression widens in every family
+98.3\% adjusted average and 73.3\% worst group, a 25-point gap the shortcut
+explains, and compression widens it in every family
 (Figure~\ref{fig:damage}).
 
 \begin{table}[t]
@@ -286,25 +265,23 @@ FFN, 30\% of neurons        & 0.200 & 81.3 ($-17.1$) & 22.6 ($-50.7$) \\
 \end{tabular}
 \end{table}
 
-The magnitude row shows the effect most sharply. Half a point of adjusted average
-against 14.9 points of worst group is a ratio of 29 to one, and an evaluation that looked only at average accuracy would have passed this
-model. Structured removal costs more per parameter touched: 6 attention heads
-are 2.8\% of the targeted weights and cost 18.2 points. The quantization scale
-matters more than the bit width, with per-channel 4-bit keeping 66.7\% against
-per-tensor 4-bit's 8.0\%.
+Read the magnitude row twice. Half a point of adjusted average against 14.9
+points of worst group is the 29-to-one ratio, and nothing in a top-line
+accuracy check would have caught it. Structured removal costs more per
+parameter touched: 6 attention heads are 2.8\% of the targeted weights and
+cost 18.2 points. The quantization scale matters more than the bit width, with
+per-channel 4-bit keeping 66.7\% where per-tensor 4-bit keeps 8.0\%.
 
-Past roughly 80\% sparsity the gap narrows again. This happens because the
-models begin collapsing to a single class, which leaves no disparity to
-measure, and not because robustness has improved.
+Past roughly 80\% sparsity the gap narrows again. Individual seeds are
+collapsing to a single class by then, which leaves no disparity to measure.
+Robustness is not coming back.
 
 \subsection{The repair reproduces}
 
-Table~\ref{tab:phase2} compares our dense repaired models against the
-published result. Across all nine arms the gain over ERM averages 13.9 points
-with a standard deviation of 3.1 and is positive in every one; at the 50\%
-budget worst-group accuracy rises from 73.3\% to 87.9\%, a gain of 14.6
-points. The gain is flat across budgets from 25\% to 75\%, which is the
-claim of the paper's Figure 8.
+Across all nine arms the gain over ERM averages 13.9 points with a standard
+deviation of 3.1 and is positive in every one. At the 50\% budget worst-group
+accuracy rises from 73.3\% to 87.9\%, a gain of 14.6 points, and the gain is
+flat from 25\% to 75\%, which is what the paper's Figure 8 claims.
 
 \begin{table}[t]
 \centering
@@ -328,20 +305,20 @@ published method           & 90.93 & 92.48 \\
 \end{tabular}
 \end{table}
 
-We land 3 points under the published 90.93. We think the shortfall comes from
-the difficulty ranking. Our backbone is pretrained
-and reaches 97.9\% training accuracy after two passes, so by scoring time the
-ranking has flattened; the published setup trains from scratch for 100
-epochs, where it still separates samples. At the 50\% budget, 63\% of what we delete is
-material the model already classifies above 99.3\% confidence (65\% and
-64\% at the other two budgets), so our version mostly shrinks and balances the training set, and these numbers
-should be read as a lower bound.
+We land 3 points under the published 90.93, and we think the difficulty
+ranking is why. Our backbone is pretrained and reaches 97.9\% training accuracy
+after two passes, so the ranking has flattened by the time we score it; the
+published setup trains from scratch for 100 epochs, where it still separates
+samples. At the 50\% budget, 63\% of what we delete is material the model
+already classifies above 99.3\% confidence, and 65\% and 64\% at the other two
+budgets. Our version mostly shrinks and balances the training set rather than
+removing hard samples, so 14.6 should be read as a lower bound on the method.
 
 \subsection{What predicts retention}
 
-We expected $R$ to differ by compression family, since Phase 1 showed the
-families are not interchangeable. It turned out to depend on something else
-entirely: whether compression left a working model at all
+We built the sweep expecting $R$ to differ by compression family, since Phase
+1 had just shown the families are not interchangeable. It does not. What
+predicts $R$ is whether compression left a model that works at all
 (Table~\ref{tab:retention}).
 
 \begin{table}[t]
@@ -362,20 +339,20 @@ below $0.25$ (broken)                       & 67  & $-0.20$ & 13\% \\
 \end{tabular}
 \end{table}
 
-We bucket by the compressed model's worst-group accuracy at 0.40 and 0.25;
+We bucket by the compressed model's own worst-group accuracy at 0.40 and 0.25;
 moving either cutoff by 0.05 leaves the usable and broken buckets essentially
-unchanged. Inside the usable regime $R$ ranges from $+0.29$ to $+3.58$ across
-all four families, and negative values never appear above a compressed
-worst-group accuracy of 0.269. A mean $R$ above one says the gap usually widens: at 50\%
+unchanged. Inside the usable regime $R$ runs from $+0.29$ to $+3.58$ across all
+four families, and negative values never appear above a compressed worst-group
+accuracy of 0.269. A mean $R$ above one says the gap usually widens. At 50\%
 magnitude sparsity the plain model loses 49.6 points of worst-group accuracy
-while the repaired model loses 34.9, so $D$ doubles and $R$ reaches 2.04.
+and the repaired model loses 34.9, so $D$ doubles and $R$ reaches 2.04.
 
 \subsection{Why $R$ goes negative}
 
-Worst-group accuracy is a minimum over four groups and says nothing about
-which group is binding. Decomposing the gain per group
-(Table~\ref{tab:pergroup}) shows that the targeted group keeps benefiting
-long after worst-group accuracy stops reporting it (Figure~\ref{fig:pergroup}).
+Worst-group accuracy is a minimum over four groups and says nothing about which
+group is binding. Breaking the gain out per group (Table~\ref{tab:pergroup})
+shows the targeted group still benefiting long after worst-group accuracy stops
+reporting it (Figure~\ref{fig:pergroup}).
 
 \begin{table}[t]
 \centering
@@ -407,42 +384,69 @@ because the binding group has moved to the majority group.}
 \end{figure}
 
 At 70\% sparsity the binding group moves to landbird-on-land, the majority
-group, which has nothing to do with the spurious correlation, so worst-group
-accuracy reports $-0.4$ points for a model 21 points better on the group the
-repair targets.
+group, which has nothing to do with the spurious correlation. Worst-group
+accuracy reports $-0.4$ points for a model that is 21 points better on the
+group the repair was aimed at.
 
-Splitting all 168 settings where $R$ is defined by its sign makes the point
-quantitatively. Where $R < 0$ ($n = 43$) the worst-group gain averages $-9.0$
-points, yet the gain on waterbird-on-land averages $+21.9$ and is positive in
-34 of 43 runs. Where $R \geq 0$ ($n = 125$) the figures are $+17.6$ and
-$+20.8$. The effect on the group the repair targets is the same in both
-halves to within a point and a half; what differs is whether worst-group
-accuracy still points at that group: the repaired model's worst group is no
-longer waterbird-on-land in 93\% of negative-$R$ settings against 50\% of
+Splitting the 168 settings where $R$ is defined by its sign makes this
+quantitative. Where $R < 0$ ($n = 43$) the worst-group gain averages $-9.0$
+points, while the gain on waterbird-on-land averages $+21.9$ and is positive in
+34 of those 43 runs. Where $R \geq 0$ ($n = 125$) the two figures are $+17.6$
+and $+20.8$. The effect on the group the repair targets is the same in both
+halves to within a point and a half. What changes is whether worst-group
+accuracy is still pointing at that group: the repaired model's worst group is
+no longer waterbird-on-land in 93\% of negative-$R$ settings against 50\% of
 the rest, and has left both counter-shortcut groups in 35\% against 18\%.
 
-So in most negative-$R$ cases the repair is still working, and worst-group
-accuracy has simply moved to a different group once compression broke the
-majority group badly enough to make it the minimum. We recommend reporting
-which group is binding alongside worst-group accuracy.
+So a negative $R$ mostly does not mean the repair was destroyed. It means
+worst-group accuracy moved once compression broke the majority group badly
+enough to make it the minimum. Report which group is binding next to the
+number.
+
+\subsection{What went wrong}
+
+Three bugs changed numbers we had already written down, and one killed a
+planned experiment.
+
+The sweep resumes by skipping configurations already in \texttt{sweep.csv},
+and a row's identity was originally \texttt{(method, param\_value,
+granularity)}. Seed 1 matched every row seed 0 had written, declared all 29
+configurations done and exited having computed nothing. The identity now
+carries the tag, seed and checkpoint. Second, \texttt{-{}-stop-after-epoch} scores difficulty without writing a
+selection checkpoint, but its break test sat after the save test, so epoch 0
+of a \texttt{score\_epoch: 1} run fell through and overwrote
+\texttt{vit\_s16\_waterbirds\_seed0.pt} with epoch-0 weights, 0.8616
+validation accuracy against 0.9199. Checkpoints are gitignored and were not
+backed up, so we retrained. Third, our own Table~\ref{tab:retention} was wrong
+in an earlier draft: we bucketed all 195 non-collapsed rows, 27 of which are
+the uncompressed setting where $R(0) = 1$ by construction. They all landed in
+the usable bucket. Dropping them moves that row from 114 settings at a mean
+$R$ of 1.30 to 87 at 1.39.
+
+The proposal specified budgets of $\{1, 2, 5, 10\}\%$. Twelve of those arms
+died partway through the sweep with \texttt{Errno 28: No space left on
+device}, the uint8 caches having filled the disk, and rather than re-run them
+we moved to the 25/50/75\% budgets the paper itself sweeps. We also lost a
+night to a machine that slept mid-run: epoch 8 of seed 0 took 3338 seconds
+against 114 for every uninterrupted epoch.
 
 \section{Conclusion and limitations}
 
-Compression damages the groups a model was already worst at, and average
-accuracy understates that damage by a factor of 29. The repair of
-\citet{mulchandani2025severing} reproduces on a transformer at a tenth of the
-schedule and then survives compression: wherever the compressed model remains
-usable, 95\% of settings keep at least three quarters of the dense gain, and
-the gain often widens because the unrepaired model degrades faster.
+The thing we would change first is the difficulty score. Scoring a pretrained
+backbone at epoch 1 gives a ranking that has already flattened, and that is
+the most likely reason we land 3 points short of the published method. A
+longer schedule, or scoring from a randomly initialized head, would test it
+directly.
 
-We see four limits on this. The study covers one dataset and one architecture, and
-Waterbirds has a clean synthetic shortcut that natural distribution shift
-does not. Our reproduction is weakened by a pretrained backbone whose
-difficulty ranking flattens after two epochs, so the published method is
-likely stronger than our 14.6 points suggest. Head and neuron importance uses
-weight norm with no calibration data, and a data-aware criterion might prune
-in a more robustness-preserving order. Finally, worst-group accuracy on a
-642-sample group is volatile, hence three seeds.
+Four limits are worth stating. This is one dataset and one architecture, and
+Waterbirds has a clean synthetic shortcut that natural distribution shift does
+not. Head and neuron importance is weight norm with no calibration data, and a
+data-aware criterion might prune in a more robustness-preserving order. Phase
+1 reports means over three seeds with no spread, and worst-group accuracy on a
+642-image group moves around; the Phase 2 gain carries a standard deviation of
+3.1 for that reason, and Phase 1 should carry one too. Finally, $R$ inherits every weakness of worst-group accuracy, and we have
+shown it can report a loss for a model that improved on the group the repair
+targeted.
 
 \section*{Contribution of each member}
 
