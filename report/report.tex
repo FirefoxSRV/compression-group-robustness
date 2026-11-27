@@ -108,8 +108,8 @@ data.
 ViT-S/16 \citep{dosovitskiy2021image} cuts a $224 \times 224$ image into
 $16 \times 16$ patches and runs them through 12 blocks. Each block has 6
 attention heads of width 64 over a 384-channel embedding and an MLP that
-widens 384 to 1536 and back, so there are 72 heads to prune from. Magnitude pruning \citep{han2015learning} zeroes the smallest weights and
-leaves tensor shapes alone. Head and neuron removal \citep{michel2019sixteen}
+widens 384 to 1536 and back, so there are 72 heads to prune from. Pruning by magnitude \citep{han2015learning} drives the
+smallest $|w|$ to zero and leaves every tensor shape intact. Head and neuron removal \citep{michel2019sixteen}
 deletes whole units, so the zeros arrive in blocks. Quantization
 \citep{krishnamoorthi2018quantizing} keeps every weight at lower precision,
 the scale set per matrix or per output row;
@@ -118,10 +118,10 @@ the scale set per matrix or per output row;
 Waterbirds pastes cropped birds onto Places \citep{zhou2018places}
 backgrounds. We read the official splits from \texttt{metadata.csv}: 4795
 training images, 1199 validation and 5794 test. A group is $g = 2y + b$ for
-label $y$ and background $b$, giving landbird-on-land (3498 training images),
-landbird-on-water (184), waterbird-on-land (56) and waterbird-on-water (1057),
-written g0 to g3. The two middle groups contradict the shortcut, and g2, with
-56 training images, is the worst group almost everywhere below. The test split
+label $y$ and background $b$. Over land the training split holds 3498
+landbirds (g0) against 56 waterbirds (g2); over water, 184 landbirds (g1)
+against 1057 waterbirds (g3). The two middle groups contradict the shortcut,
+and g2, with only 56 images, is the worst group almost everywhere below. The test split
 is far more group-balanced than the training split, so a plain test mean is
 not comparable to published Waterbirds numbers. We follow WILDS and report the
 adjusted average, which reweights per-group accuracy by training frequency.
@@ -143,9 +143,9 @@ model whose $W$ starts higher and asks how much of the head start is left.
 \subsection{A frozen compression scope}
 
 Four families are only comparable if they may touch the same parameters, so we
-fixed the scope once and never moved it: the in-block linear weights
-\texttt{attn.qkv}, \texttt{attn.proj}, \texttt{mlp.fc1} and \texttt{mlp.fc2},
-48 tensors holding 21{,}233{,}664 parameters. Patch embedding, positional
+fixed the scope once and never moved it: inside each block, both attention matrices (\texttt{qkv} and \texttt{proj})
+and both MLP matrices (\texttt{fc1} and \texttt{fc2}), 48 tensors holding
+21{,}233{,}664 parameters. Patch embedding, positional
 embedding, the class token, every LayerNorm, every bias and the classifier head
 are all excluded. Achieved sparsity therefore means the same thing in every row
 of Table~\ref{tab:phase1}.
@@ -219,9 +219,9 @@ threshold, between 8.4 and 18.5 points.
 
 Every number below is a mean over three seeds. We fine-tune timm's
 \texttt{vit\_small\_\-patch16\_\-224} \citep{wightman2019timm} from ImageNet
-weights for 10 epochs with AdamW, learning rate $10^{-5}$, weight decay
-$10^{-4}$, cosine decay with no warmup, batch size 32 and
-\texttt{num\_workers=0}, which reproduces bit for bit on this machine. The
+weights for 10 epochs. Batches of 32 go through AdamW at $10^{-5}$ on a cosine
+schedule with no warmup, weight decay $10^{-4}$, and \texttt{num\_workers=0},
+which reproduces bit for bit on this machine. The
 sweep runs 29 configurations per arm and seed: seven magnitude sparsities and
 seven FFN neuron fractions from 0 to 0.95, seven head budgets from 0 to 60,
 and $\{8, 6, 4, 3\}$ bits at two granularities. Four arms and three seeds give
