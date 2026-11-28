@@ -63,6 +63,88 @@ qt4 = erm[(erm.method == "quantize") & (erm.param_value == 4)
           & (erm.granularity == "per_tensor")]
 check("per-tensor 4-bit worst group", 100 * qt4.acc_wg.mean(), 8.0)
 
+print("\nTable 1, bits per stored weight, and whether any cost metric orders the damage")
+N_SCOPE = 21_233_664
+
+
+def bits_per_weight(r) -> float:
+    """What one weight of the frozen scope costs after compression.
+
+    Quantization keeps every weight at `bits` and adds a scale per tensor or
+    per output row. Unstructured pruning keeps survivors at fp32 and must also
+    store a one-bit mask. Structured removal deletes whole rows and columns, so
+    survivors cost fp32 and nothing else.
+    """
+    s = r.achieved_sparsity
+    if r.method == "quantize":
+        n_scales = 48 if r.granularity == "per_tensor" else 36_096
+        return r.param_value + n_scales * 32 / N_SCOPE
+    if r.method == "magnitude":
+        return (1 - s) * 32 + 1
+    return (1 - s) * 32
+
+
+live_bits = erm.copy()
+live_bits["bpw"] = live_bits.apply(bits_per_weight, axis=1)
+for method, val, gran, bits in (("heads", 0, "", 32.0), ("quantize", 8, "per_channel", 8.1),
+                                ("quantize", 6, "per_channel", 6.1), ("magnitude", 0.3, "", 23.4),
+                                ("quantize", 4, "per_channel", 4.1), ("heads", 6, "", 31.1),
+                                ("ffn", 0.3, "", 25.6)):
+    s = live_bits[(live_bits.method == method) & (live_bits.param_value == val)
+                  & (live_bits.granularity == gran)]
+    check(f"bits/weight, {method} {val} {gran}".rstrip(), s.bpw.mean(), bits, tol=0.06)
+
+h6b = live_bits[(live_bits.method == "heads") & (live_bits.param_value == 6)].bpw.mean()
+q6b = live_bits[(live_bits.method == "quantize") & (live_bits.param_value == 6)
+                & (live_bits.granularity == "per_channel")].bpw.mean()
+check("6 heads shrink the model by", 32 / h6b, 1.03, tol=0.01)
+check("6-bit per-channel shrinks it by", 32 / q6b, 5.3, tol=0.05)
+
+
+def spearman(a, b) -> float:
+    ra, rb = pd.Series(a).rank(), pd.Series(b).rank()
+    return float(ra.corr(rb))
+
+
+# One row per setting, averaged over seeds, collapsed models dropped: a model
+# predicting one class has no disparity left to correlate against.
+cfg = (live_bits[live_bits.param_value != 0]
+       .groupby(["method", "param_value", "granularity"])
+       .agg(bpw=("bpw", "mean"), sp=("achieved_sparsity", "mean"),
+            wg=("acc_wg", "mean"), pred=("pred_mean", "mean"))
+       .reset_index())
+cfg = cfg[(cfg.pred >= 0.05) & (cfg.pred <= 0.95)]
+cfg["loss"] = 100 * (b_wg - cfg.wg)
+worst_rho = min(abs(spearman(g.sp, g.loss)) for _, g in cfg.groupby("method"))
+check("weakest within-family sparsity |rho|", worst_rho, 0.77, tol=0.05)
+check("stored size vs damage, across families", abs(spearman(cfg.bpw, cfg.loss)), 0.17, tol=0.05)
+
+print("\nSection 4.1, which heads the norm rule selects")
+ckpts = sorted((ROOT / "checkpoints").glob("vit_s16_waterbirds_seed?.pt"))
+if len(ckpts) < 3:
+    print("  -- skipped: checkpoints/ is gitignored; run run_phase1.sh")
+else:
+    sys.path.insert(0, str(ROOT))
+    from src.model import create_model, fresh_model
+    from src.compress.heads import head_importance, select_heads
+
+    picks, norms = [], None
+    for c in ckpts:
+        m = fresh_model(str(c), "cpu")
+        picks.append(select_heads(m, 6))
+        norms = sorted(s for s, _, _ in head_importance(m))
+    assert all(p == picks[0] for p in picks), "the 6 removed heads differ by seed"
+    print(f"  ok  all 3 seeds remove the same 6 heads: {picks[0]}")
+    check("smallest head as a share of the largest (%)", 100 * norms[0] / norms[-1], 73, tol=1)
+
+    pre = create_model(pretrained=True).eval()
+    pre_norms = sorted(s for s, _, _ in head_importance(pre))
+    assert select_heads(pre, 6) == picks[0], "fine-tuning reorders the 6 smallest heads"
+    print("  ok  the ImageNet checkpoint selects those same 6 heads")
+    moved = max(abs(a - b) for a, b in zip(pre_norms, norms))
+    assert moved < 0.01, f"a head norm moved {moved:.4f} during fine-tuning"
+    print(f"  ok  no head norm moves by as much as 0.01 ({moved:.4f} at most)")
+
 print("\nTable 2, Phase 2 dense")
 for tag, wg, mean in (("spur25", 86.40, 94.69), ("spur50", 87.90, 94.35),
                       ("spur75", 87.28, 92.10)):
